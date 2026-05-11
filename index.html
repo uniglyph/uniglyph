@@ -128,7 +128,6 @@
     }
 
     #drawingSvg {
-      position: absolute; inset: 0;
       width: 100%; height: 100%;
       touch-action: none; cursor: crosshair;
       display: block;
@@ -143,11 +142,12 @@
     }
 
     #canvasFrame {
-      position: absolute; pointer-events: none;
+      position: absolute;
       border: 2px dashed rgba(100,90,80,0.4);
       border-radius: 2px;
       box-shadow: 0 0 0 9999px rgba(230,224,216,0.5);
       display: none; z-index: 5;
+      overflow: hidden;
     }
 
     /* ══════════════════════════════
@@ -499,9 +499,11 @@
       border-radius: var(--radius);
       border: 1px solid var(--border);
       background: var(--paper-warm);
-      overflow: hidden; cursor: pointer;
+      cursor: pointer;
       transition: border-color 0.15s;
       touch-action: manipulation;
+      display: flex;
+      flex-direction: column;
     }
     .ss-card:active { border-color: var(--ink-muted); }
 
@@ -509,6 +511,7 @@
       width: 100%; aspect-ratio: 1;
       background: white;
       border-bottom: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
       display: flex; align-items: center; justify-content: center;
       overflow: hidden;
     }
@@ -526,9 +529,11 @@
       padding: 10px 12px 12px;
       overflow: visible;
       min-height: fit-content;
+      background: white;
+      border-radius: 0 0 var(--radius) var(--radius);
     }
     .ss-card-name {
-      font-size: 12px; font-weight: 500; color: var(--ink);
+      font-size: 12px; font-weight: 500; color: #1c1917 !important;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       margin-bottom: 4px;
       cursor: pointer;
@@ -539,7 +544,7 @@
       color: var(--accent);
       text-decoration: underline;
     }
-    .ss-card-meta { font-size: 10px; color: var(--ink-muted); line-height: 1.5; }
+    .ss-card-meta { font-size: 10px; color: #78716c !important; line-height: 1.5; }
 
     .ss-card-actions {
       display: flex; gap: 6px; margin-top: 8px;
@@ -557,6 +562,94 @@
     .ss-card-btn:active { background: var(--paper-mid); }
     .ss-card-btn.del { color: var(--accent); border-color: #fca58a; }
     .ss-card-btn.del:active { background: var(--accent-light); }
+    
+    /* Storage indicator */
+    #storage-indicator {
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+    
+    .storage-bar {
+      width: 180px;
+      height: 4px;
+      background: var(--paper-mid);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    
+    .storage-bar-fill {
+      height: 100%;
+      background: var(--ink-muted);
+      transition: width 0.3s, background 0.3s;
+    }
+    
+    .storage-bar-fill.warning {
+      background: #f59e0b;
+    }
+    
+    .storage-bar-fill.critical {
+      background: var(--accent);
+    }
+
+    /* New session button responsive */
+    @media (max-width: 599px) {
+      .ss-header {
+        padding: 16px 20px;
+      }
+      
+      .ss-new-btn {
+        min-width: 40px;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .ss-new-btn .btn-text {
+        display: none;
+      }
+      
+      .ss-new-btn .btn-icon {
+        display: block;
+      }
+    }
+    
+    @media (min-width: 600px) {
+      .ss-new-btn .btn-icon {
+        display: none;
+      }
+      .ss-new-btn .btn-text {
+        display: inline;
+      }
+    }
+
+    /* Update toast */
+    #update-toast {
+      position: fixed;
+      top: 20px; left: 50%;
+      transform: translateX(-50%);
+      background: var(--ink);
+      color: var(--paper);
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 9999;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    
+    #update-toast.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
 
     /* ── Name modal ── */
     .modal-backdrop {
@@ -583,8 +676,8 @@
     .modal-backdrop.open .modal { transform: translateY(0); }
 
     .modal-title {
-      font-family: 'Fraunces', serif;
-      font-size: 18px; font-weight: 600;
+      font-family: 'DM Mono', monospace;
+      font-size: 18px; font-weight: 500;
       color: var(--ink); margin-bottom: 16px;
     }
     .modal input[type=text] {
@@ -616,6 +709,30 @@
       background: var(--ink); color: var(--paper); border-color: var(--ink);
     }
     .modal-btn.primary:active { opacity: 0.85; }
+    
+    /* Canvas size buttons in modal */
+    .canvas-size-btn {
+      padding: 12px;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: white;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      font-family: 'DM Mono', monospace;
+    }
+    .canvas-size-btn:hover {
+      border-color: #a8a29e;
+    }
+    .canvas-size-btn.active {
+      border-color: var(--ink);
+      background: #fafaf9;
+    }
+    .canvas-size-btn:active {
+      transform: scale(0.98);
+    }
 
     /* Sessions btn in sidebar */
     .action-btn.home-btn {
@@ -732,15 +849,16 @@
 <!-- CANVAS (shared) -->
 <div id="canvas-area">
   <div id="zoom-layer">
-    <svg id="drawingSvg" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <clipPath id="canvasClip">
-          <rect id="canvasClipRect" x="0" y="0" width="10000" height="10000"/>
-        </clipPath>
-      </defs>
-      <g id="strokeLayer"></g>
-    </svg>
-    <div id="canvasFrame"></div>
+    <div id="canvasFrame">
+      <svg id="drawingSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 1462">
+        <defs>
+          <clipPath id="canvasClip">
+            <rect id="canvasClipRect" x="0" y="0" width="10000" height="10000"/>
+          </clipPath>
+        </defs>
+        <g id="strokeLayer"></g>
+      </svg>
+    </div>
     <div id="eraserCursor"></div>
   </div>
 </div>
@@ -798,15 +916,10 @@
   </div>
   <div class="sidebar-section">
     <div class="sec-label">Canvas</div>
-    <button class="size-btn active" data-size="full">
-      <span class="size-name">Full</span><span class="size-dims">Screen</span>
-    </button>
-    <button class="size-btn" data-size="a1f">
-      <span class="size-name">A1F</span><span class="size-dims">3.5×4.875</span>
-    </button>
-    <button class="size-btn" data-size="a2f">
-      <span class="size-name">A2F</span><span class="size-dims">4.25×5.5</span>
-    </button>
+    <div id="canvasSizeLabel" style="padding: 8px 12px;">
+      <div style="font-size: 11px; color: #1c1917; font-weight: 400;">Not set</div>
+      <div style="font-size: 11px; color: #78716c; margin-top: 2px; font-weight: 400;">-</div>
+    </div>
   </div>
   <div class="sidebar-section">
     <div class="sec-label">Edit</div>
@@ -925,15 +1038,6 @@
   <div class="tray-handle"></div>
   <div class="tray-title">Options</div>
   <div class="more-grid">
-    <button class="more-btn active" data-size="full">
-      <span class="btn-title">Full</span><span class="btn-sub">Screen</span>
-    </button>
-    <button class="more-btn" data-size="a1f">
-      <span class="btn-title">A1F</span><span class="btn-sub">3.5 × 4.875</span>
-    </button>
-    <button class="more-btn" data-size="a2f">
-      <span class="btn-title">A2F</span><span class="btn-sub">4.25 × 5.5</span>
-    </button>
     <button class="more-btn danger" id="mb-clear-btn">
       <span class="btn-title">Clear</span><span class="btn-sub">All strokes</span>
     </button>
@@ -962,94 +1066,7 @@
       .st2 {
         fill: #f2f1f1;
       }
-  
-
-    #storage-indicator {
-      font-size: 11px;
-      color: var(--ink-muted);
-    }
-    
-    .storage-bar {
-      width: 180px;
-      height: 4px;
-      background: var(--paper-mid);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-    
-    .storage-bar-fill {
-      height: 100%;
-      background: var(--ink-muted);
-      transition: width 0.3s, background 0.3s;
-    }
-    
-    .storage-bar-fill.warning {
-      background: #f59e0b;
-    }
-    
-    .storage-bar-fill.critical {
-      background: var(--accent);
-    }
-
-    @media (max-width: 599px) {
-      .ss-header {
-        padding: 16px 20px;
-      }
-      
-      .ss-new-btn {
-        min-width: 40px;
-        width: 40px;
-        height: 40px;
-        padding: 0;
-        font-size: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      
-      .ss-new-btn .btn-text {
-        display: none; /* Hide text on mobile */
-      }
-      
-      .ss-new-btn .btn-icon {
-        display: block; /* Show icon on mobile */
-      }
-    }
-    
-    /* Desktop: hide icons, show text */
-    @media (min-width: 600px) {
-      .ss-new-btn .btn-icon {
-        display: none;
-      }
-      .ss-new-btn .btn-text {
-        display: inline;
-      }
-    }
-
-    #update-toast {
-      position: fixed;
-      top: 20px; left: 50%;
-      transform: translateX(-50%);
-      background: var(--ink);
-      color: var(--paper);
-      padding: 12px 20px;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 500;
-      z-index: 9999;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s;
-    }
-    
-    #update-toast.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
-  </style>
+    </style>
   </defs>
   <path class="st1" d="M102.18,51.5c-3.25,2.25-6.57,2.52-9.97.85-1.52-.75-2.94-1.72-4.3-2.74-.68-.51-1.26-1.29-1.61-2.07-.62-1.36-.73-2.84.28-4.08.97-1.19,2.4-1.54,3.88-1.44,1.32.09,2.33,1.09,2.57,2.53.13.78.17,1.55,1.04,1.8,1.02.29,2.07.6,3.12.63.44.01,1.08-.59,1.3-1.07.43-.92.7-1.93.89-2.93.49-2.55.25-5.12.16-7.81-1.32,0-2.47-.03-3.61,0-2.89.1-5.06-1.44-7.06-3.24-.56-.5-1.01-1.42-1.03-2.15-.05-2.72.02-5.45.2-8.16.28-4.37,5.47-7.6,8.81-7.9.95-.09,1.91-.06,2.86.01,1.41.11,2.64.65,3.52,1.83.28.38.58.77.95,1.05.97.74,1.28,1.71,1.25,2.87-.03.89-.02,1.78,0,2.66.11,6.55.35,13.09.29,19.64-.03,3.52-.94,6.89-3.54,9.71ZM95.68,20.59c-1.32.67-1.68,1.89-1.8,3.21-.08.94-.05,1.9-.04,2.85.02,1.55.29,1.91,1.68,2.32,1.19.35,1.75.15,2.58-1.01,1.12-1.57,1.21-3.41,1.31-5.25.08-1.38-1.18-1.86-1.71-2.96-.65.25-1.2.46-2.02.83Z"/>
   <path class="st1" d="M124.88,46.9c-.37-.21-.61-.33-.83-.5-1.59-1.22-2-2.83-1.12-4.27.92-1.5,3.03-1.99,4.71-1.04.83.47,1.57,1.09,2.41,1.54,1.99,1.07,3.26.59,3.87-1.56.69-2.42,1.3-4.86,1.83-7.32.18-.83.03-1.74.03-2.57-.17-.12-.28-.26-.38-.25-4.36.22-7.06-2.46-9.42-5.56-.61-.8-.93-1.99-.98-3.03-.13-2.66-.03-5.32-.05-7.99-.01-1.43.51-2.55,1.85-3.14,2.05-.89,4.17.52,4.28,2.91.09,1.98.14,3.97-.01,5.94-.17,2.15.85,3.31,2.95,4.1,1.17-1.62,2.49-3.13,2.48-5.36,0-1.43-.07-2.87.02-4.3.12-1.97,1.57-3.2,3.38-3.02,1.51.15,2.69,1.23,2.69,2.86,0,4.84-.12,9.68-.24,14.52-.04,1.43-.33,2.85-.34,4.27-.02,4.05-1.32,7.81-2.72,11.49-1.09,2.88-3.58,4.29-6.66,4.69-2.95.39-5.27-1.03-7.78-2.42Z"/>
@@ -1090,9 +1107,50 @@
   <div class="modal">
     <div class="modal-title" id="modal-title">Name your session</div>
     <input type="text" id="modal-input" placeholder="e.g. Birthday Card" maxlength="40">
-    <div class="modal-btns">
+    
+    <div style="margin-top: 16px;">
+      <div style="font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 500; margin-bottom: 12px; color: #1c1917;">Canvas Size</div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <button class="canvas-size-btn active" data-canvas-size="a1">
+          <div style="font-weight: 500; font-size: 14px;">A1 Card</div>
+          <div style="font-size: 12px; color: #78716c;">3.5" × 4.875"</div>
+        </button>
+        <button class="canvas-size-btn" data-canvas-size="a2">
+          <div style="font-weight: 500; font-size: 14px;">A2 Card</div>
+          <div style="font-size: 12px; color: #78716c;">4.25" × 5.5"</div>
+        </button>
+        <button class="canvas-size-btn" data-canvas-size="a6">
+          <div style="font-weight: 500; font-size: 14px;">A6 Card</div>
+          <div style="font-size: 12px; color: #78716c;">4.5" × 6.25"</div>
+        </button>
+        <button class="canvas-size-btn" data-canvas-size="a7">
+          <div style="font-weight: 500; font-size: 14px;">A7 Card</div>
+          <div style="font-size: 12px; color: #78716c;">5" × 7"</div>
+        </button>
+        <button class="canvas-size-btn" data-canvas-size="letter">
+          <div style="font-weight: 500; font-size: 14px;">Letter</div>
+          <div style="font-size: 12px; color: #78716c;">8.5" × 11"</div>
+        </button>
+        <button class="canvas-size-btn" data-canvas-size="custom">
+          <div style="font-weight: 500; font-size: 14px;">Custom</div>
+          <div style="font-size: 12px; color: #78716c;">Custom size</div>
+        </button>
+      </div>
+      
+      <div id="custom-size-inputs" style="display: none; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="number" id="custom-width" placeholder="Width" min="1" max="24" step="0.125" style="flex: 1; padding: 10px; border: 1px solid #d6d3d1; border-radius: 6px; font-size: 14px;">
+          <span style="color: #78716c;">×</span>
+          <input type="number" id="custom-height" placeholder="Height" min="1" max="36" step="0.125" style="flex: 1; padding: 10px; border: 1px solid #d6d3d1; border-radius: 6px; font-size: 14px;">
+          <span style="color: #78716c; font-size: 13px;">inches</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="modal-btns" style="margin-top: 24px;">
       <button class="modal-btn" id="modal-cancel">Cancel</button>
-      <button class="modal-btn primary" id="modal-confirm">Save</button>
+      <button class="modal-btn primary" id="modal-confirm">Create</button>
     </div>
   </div>
 </div>
@@ -1126,8 +1184,19 @@ let redoStack = [];
 const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
 let currentPath = null, points = [], strokes = [];
-let activeSize = 'full', toastTimer = null;
-const A1F_RATIO = 3.5 / 4.875, A2F_RATIO = 4.25 / 5.5;
+// Canvas size configuration
+let canvasConfig = null; // { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 }
+let toastTimer = null;
+// Canvas size presets (dimensions in inches)
+const CANVAS_SIZES = {
+  a1: { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 },
+  a2: { id: 'a2', label: 'A2 Card', w: 4.25, h: 5.5 },
+  a6: { id: 'a6', label: 'A6 Card', w: 4.5, h: 6.25 },
+  a7: { id: 'a7', label: 'A7 Card', w: 5, h: 7 },
+  letter: { id: 'letter', label: 'Letter', w: 8.5, h: 11 }
+};
+const DPI = 300; // Pixels per inch for viewBox calculation
+
 
 // ── Zoom / pan state ──
 const zoomLayer = document.getElementById('zoom-layer');
@@ -1214,21 +1283,26 @@ function showToast(msg) {
 
 // ── Drawing ──
 function getPos(e) {
-  const rect = canvasArea.getBoundingClientRect();
   const src = e.touches ? e.touches[0] : e;
   
-  // Position relative to canvas-area
-  const clientX = src.clientX - rect.left;
-  const clientY = src.clientY - rect.top;
+  // SVG is inside canvasFrame and sized to match it
+  const svgRect = svg.getBoundingClientRect();
   
-  // Reverse the transform: translate then scale
-  // Transform is: translate(zoomX, zoomY) scale(zoomScale)
-  // Reverse: first undo translate, then undo scale
-  const tx = clientX - zoomX;
-  const ty = clientY - zoomY;
+  // Position relative to the SVG
+  const svgX = src.clientX - svgRect.left;
+  const svgY = src.clientY - svgRect.top;
   
-  // Reverse scale
-  return { x: tx / zoomScale, y: ty / zoomScale };
+  // Get viewBox dimensions
+  const viewBoxAttr = svg.getAttribute('viewBox');
+  const viewBoxParts = viewBoxAttr.split(' ').map(parseFloat);
+  const viewBoxW = viewBoxParts[2];
+  const viewBoxH = viewBoxParts[3];
+  
+  // Convert from SVG pixels to viewBox coordinates
+  const viewBoxX = (svgX / svgRect.width) * viewBoxW;
+  const viewBoxY = (svgY / svgRect.height) * viewBoxH;
+  
+  return { x: viewBoxX, y: viewBoxY };
 }
 
 function smoothPoints(pts) {
@@ -1651,7 +1725,7 @@ function syncSize(v) {
 document.getElementById('brushSizeTablet').addEventListener('input', e => syncSize(parseInt(e.target.value)));
 document.getElementById('brushSizeMobile').addEventListener('input', e => syncSize(parseInt(e.target.value)));
 // ── Canvas Size ──
-function positionFrame(ratio) {
+function positionFrame(ratio, viewBoxW, viewBoxH) {
   const areaW = canvasArea.clientWidth, areaH = canvasArea.clientHeight, m = 28;
   let frameW, frameH;
   if ((areaW - m*2) / (areaH - m*2) > ratio) { frameH = areaH - m*2; frameW = frameH * ratio; }
@@ -1662,44 +1736,56 @@ function positionFrame(ratio) {
     left: frameX + 'px', top: frameY + 'px',
     width: frameW + 'px', height: frameH + 'px', display: 'block'
   });
-  // Update SVG clip rect to match frame (in SVG coordinate space)
+  // Update SVG clip rect in viewBox coordinate space
   const clipRect = document.getElementById('canvasClipRect');
   if (clipRect) {
-    clipRect.setAttribute('x', frameX);
-    clipRect.setAttribute('y', frameY);
-    clipRect.setAttribute('width', frameW);
-    clipRect.setAttribute('height', frameH);
+    // Convert frame position from screen pixels to viewBox coordinates
+    const clipX = (frameX / areaW) * viewBoxW;
+    const clipY = (frameY / areaH) * viewBoxH;
+    const clipW = (frameW / areaW) * viewBoxW;
+    const clipH = (frameH / areaH) * viewBoxH;
+    
+    clipRect.setAttribute('x', clipX);
+    clipRect.setAttribute('y', clipY);
+    clipRect.setAttribute('width', clipW);
+    clipRect.setAttribute('height', clipH);
   }
-  // Apply clip to stroke layer
-  document.getElementById('strokeLayer').setAttribute('clip-path', 'url(#canvasClip)');
+  // Don't apply clip-path - it's causing masking issues
+  // document.getElementById('strokeLayer').setAttribute('clip-path', 'url(#canvasClip)');
 }
 
-function setCanvasSize(s) {
-  activeSize = s;
-  if (s === 'full') {
-    canvasFrame.style.display = 'none';
-    // Remove clip — full canvas, draw anywhere
-    document.getElementById('strokeLayer').removeAttribute('clip-path');
-    const clipRect = document.getElementById('canvasClipRect');
-    if (clipRect) { clipRect.setAttribute('x', 0); clipRect.setAttribute('y', 0);
-      clipRect.setAttribute('width', 10000); clipRect.setAttribute('height', 10000); }
-    // Reset zoom when switching to full canvas
-    zoomScale = 1; zoomX = 0; zoomY = 0; zoomAngle = 0;
-    applyZoom();
-    document.getElementById('zoom-reset').classList.remove('show');
+// Set canvas size and viewBox based on config
+function applyCanvasSize(config) {
+  canvasConfig = config;
+  
+  // Calculate viewBox dimensions (inches × DPI)
+  const viewBoxW = Math.round(config.w * DPI);
+  const viewBoxH = Math.round(config.h * DPI);
+  
+  // Set viewBox
+  svg.setAttribute('viewBox', `0 0 ${viewBoxW} ${viewBoxH}`);
+  
+  // Position frame
+  const ratio = config.w / config.h;
+  positionFrame(ratio, viewBoxW, viewBoxH);
+  
+  // Update label in sidebar
+  const label = document.getElementById('canvasSizeLabel');
+  if (label) {
+    label.innerHTML = `
+      <div style="font-size: 11px; color: #1c1917; font-weight: 400;">${config.label}</div>
+      <div style="font-size: 11px; color: #78716c; margin-top: 2px; font-weight: 400;">${config.w}" × ${config.h}"</div>
+    `;
   }
-  else if (s === 'a1f') positionFrame(A1F_RATIO);
-  else if (s === 'a2f') positionFrame(A2F_RATIO);
-  const labels = { full: 'Full canvas', a1f: 'A1F — 3.5 × 4.875', a2f: 'A2F — 4.25 × 5.5' };
-  showToast(labels[s]);
-  document.querySelectorAll('.size-btn[data-size], .more-btn[data-size]').forEach(b => b.classList.toggle('active', b.dataset.size === s));
 }
 
-document.querySelectorAll('.size-btn[data-size]').forEach(b => b.addEventListener('click', () => setCanvasSize(b.dataset.size)));
-document.querySelectorAll('.more-btn[data-size]').forEach(b => b.addEventListener('click', () => { setCanvasSize(b.dataset.size); closeTray(); }));
 window.addEventListener('resize', () => {
-  if (activeSize === 'a1f') positionFrame(A1F_RATIO);
-  if (activeSize === 'a2f') positionFrame(A2F_RATIO);
+  if (canvasConfig) {
+    const ratio = canvasConfig.w / canvasConfig.h;
+    const viewBoxW = Math.round(canvasConfig.w * DPI);
+    const viewBoxH = Math.round(canvasConfig.h * DPI);
+    positionFrame(ratio, viewBoxW, viewBoxH);
+  }
 });
 
 // ── Actions ──
@@ -1798,110 +1884,45 @@ async function doExport() {
     }
   }
 
-  // Canvas size metadata
-  const CANVAS_SIZES = {
-    full:  { label: 'full',        w: null,  h: null,  unit: 'px'  },
-    a1f:   { label: 'A1F',         w: 3.5,   h: 4.875, unit: 'in'  },
-    a2f:   { label: 'A2F',         w: 4.25,  h: 5.5,   unit: 'in'  }
-  };
-  const sizeInfo = CANVAS_SIZES[activeSize] || CANVAS_SIZES.full;
-  const DPI = 300;
-
-  // Canonical viewBox dimensions (consistent across all devices)
-
-  let canonicalW, canonicalH, exportW, exportH;
-  
-  if (sizeInfo.w) {
-    // Card sizes: use physical dimensions at 300 DPI
-    canonicalW = Math.round(sizeInfo.w * DPI);  // e.g., 3.5" × 300 = 1050px
-    canonicalH = Math.round(sizeInfo.h * DPI);  // e.g., 4.875" × 300 = 1462px
-    exportW = `${sizeInfo.w}in`;
-    exportH = `${sizeInfo.h}in`;
-  } else {
-    // Full canvas: use fixed 1000×1000 reference
-    canonicalW = 1000;
-    canonicalH = 1000;
-    exportW = `${canonicalW}px`;
-    exportH = `${canonicalH}px`;
+  // Canvas config determines export dimensions
+  if (!canvasConfig) {
+    showToast('No canvas size set');
+    return;
   }
   
-  const viewBox = `0 0 ${canonicalW} ${canonicalH}`;
+  const exportW = `${canvasConfig.w}in`;
+  const exportH = `${canvasConfig.h}in`;
   
-  // Get current screen dimensions to calculate scale factor
-  const rect = svg.getBoundingClientRect();
-  const screenW = Math.round(rect.width);
-  const screenH = Math.round(rect.height);
+  // ViewBox dimensions (already in canonical space)
+  const viewBoxW = Math.round(canvasConfig.w * DPI);
+  const viewBoxH = Math.round(canvasConfig.h * DPI);
+  const viewBox = `0 0 ${viewBoxW} ${viewBoxH}`;
   
-  // For card canvases, get frame dimensions and offset
-  let currentW, currentH, offsetX = 0, offsetY = 0;
-  if (sizeInfo.w) {
-    const canvasRect = canvasArea.getBoundingClientRect();
-    const frame = canvasFrame.getBoundingClientRect();
-    currentW = Math.round(frame.width);
-    currentH = Math.round(frame.height);
-    // Calculate frame offset from canvas origin
-    offsetX = Math.round(frame.left - canvasRect.left);
-    offsetY = Math.round(frame.top - canvasRect.top);
-  } else {
-    currentW = screenW;
-    currentH = screenH;
-  }
+  // Paths are already in viewBox coordinates - no scaling needed!
   
-  // Scale factor: canonical / current
-  const scaleX = canonicalW / currentW;
-  const scaleY = canonicalH / currentH;
-
-
-  // Function to scale SVG path data and adjust for frame offset
-  function scalePath(pathD, scaleX, scaleY, offsetX, offsetY) {
-    if (scaleX === 1 && scaleY === 1 && offsetX === 0 && offsetY === 0) return pathD;
-    
-    // Parse and transform path commands
-    const commands = pathD.match(/[MLQCZ][^MLQCZ]*/gi) || [];
-    return commands.map(cmd => {
-      const type = cmd[0];
-      const coords = cmd.slice(1).trim().split(/[,\s]+/).map(parseFloat);
-      
-      if (type === 'Z' || type === 'z') return type;
-      
-      // Subtract offset, then scale coordinates
-      const scaled = coords.map((val, i) => {
-        if (i % 2 === 0) {
-          // x coordinate: subtract offsetX, then scale
-          return ((val - offsetX) * scaleX).toFixed(3);
-        } else {
-          // y coordinate: subtract offsetY, then scale
-          return ((val - offsetY) * scaleY).toFixed(3);
-        }
-      });
-      
-      return type + ' ' + scaled.join(' ');
-    }).join(' ');
-  }
-
-  const sizeLabel = sizeInfo.label.toLowerCase().replace(/\s+/g, '-');
+  // Paths are already in viewBox (canonical) coordinates - no scaling needed!
+  
+  const sizeLabel = canvasConfig.label.toLowerCase().replace(/\s+/g, '-');
   const zip = new JSZip();
 
   keys.forEach(key => {
     const { w, color, pathEls } = map[key];
     const safeColor = color.replace('#', '');
     
-    // Scale paths to canonical coordinates (with frame offset adjustment)
-    const scaledPaths = pathEls.map(p => {
-      const originalD = p.getAttribute('d');
-      const scaledD = scalePath(originalD, scaleX, scaleY, offsetX, offsetY);
-      const scaledWidth = (parseFloat(w) * scaleX).toFixed(3);
+    // Paths already in canonical coordinates - use as-is
+    const paths = pathEls.map(p => {
+      const pathD = p.getAttribute('d');
       const opacity = p.getAttribute('opacity') || '1';
-      return `<path d="${scaledD}" stroke="${color}" stroke-width="${scaledWidth}" fill="none" opacity="${opacity}"/>`;
+      return `<path d="${pathD}" stroke="${color}" stroke-width="${w}" fill="none" opacity="${opacity}"/>`;
     });
     
     const filename = `${sizeLabel}-layer-${w}px-${safeColor}.svg`;
     zip.file(filename,
 `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${exportW}" height="${exportH}" viewBox="${viewBox}">
-  <!-- Uniglyph export — canvas: ${sizeInfo.label}  stroke-width: ${w}px  color: ${color} — ${pathEls.length} stroke(s) -->
+  <!-- Uniglyph export — canvas: ${canvasConfig.label}  stroke-width: ${w}px  color: ${color} — ${pathEls.length} stroke(s) -->
   <g id="layer-${w}px-${safeColor}" stroke-linecap="round" stroke-linejoin="round">
-    ${scaledPaths.join('\n    ')}
+    ${paths.join('\n    ')}
   </g>
 </svg>`);
   });
@@ -1914,7 +1935,7 @@ async function doExport() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     if (statusMsg) statusMsg.textContent = '';
-    showToast(`Exported ${keys.length} layer${keys.length > 1 ? 's' : ''} — ${sizeInfo.label}`);
+    showToast(`Exported ${keys.length} layer${keys.length > 1 ? 's' : ''} — ${canvasConfig.label}`);
   } catch(err) {
     if (statusMsg) statusMsg.textContent = '';
     showToast('Export failed');
@@ -2080,22 +2101,43 @@ function renderSessionScreen() {
   }
   body.className = 'ss-grid';
   sessions.slice().reverse().forEach(sess => {
-    const card = document.createElement('div');
-    card.className = 'ss-card';
-    const thumb = makeThumbnail(sess.strokes);
-    const date = new Date(sess.updatedAt).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
-    const n = (sess.strokes || []).length;
-    card.innerHTML = `
-      <div class="ss-thumb ss-thumb-clickable" data-id="${sess.id}">${thumb ? thumb : '<span class="ss-thumb-empty">Empty</span>'}</div>
-      <div class="ss-card-body">
+    try {
+      const card = document.createElement('div');
+      card.className = 'ss-card';
+      
+      // Create thumbnail container
+      const thumbDiv = document.createElement('div');
+      thumbDiv.className = 'ss-thumb ss-thumb-clickable';
+      thumbDiv.dataset.id = sess.id;
+      
+      const thumb = makeThumbnail(sess.strokes);
+      if (thumb) {
+        thumbDiv.innerHTML = thumb;
+      } else {
+        thumbDiv.innerHTML = '<span class="ss-thumb-empty">Empty</span>';
+      }
+      
+      // Create card body
+      const cardBody = document.createElement('div');
+      cardBody.className = 'ss-card-body';
+      
+      const date = new Date(sess.updatedAt).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+      const n = (sess.strokes || []).length;
+      
+      cardBody.innerHTML = `
         <div class="ss-card-name" data-id="${sess.id}">${sess.name}</div>
         <div class="ss-card-meta">${date}<br>${n} stroke${n!==1?'s':''}</div>
         <div class="ss-card-actions">
           <button class="ss-card-btn open-btn" data-id="${sess.id}">Open</button>
           <button class="ss-card-btn del" data-id="${sess.id}">Delete</button>
-        </div>
-      </div>`;
-    body.appendChild(card);
+        </div>`;
+      
+      card.appendChild(thumbDiv);
+      card.appendChild(cardBody);
+      body.appendChild(card);
+    } catch (err) {
+      console.error('Error rendering session card:', sess.id, err);
+    }
   });
   body.querySelectorAll('.ss-thumb-clickable').forEach(thumb => {
     thumb.addEventListener('click', e => { e.stopPropagation(); openSession(thumb.dataset.id); });
@@ -2131,6 +2173,15 @@ function openSession(id) {
   const sess = sessions.find(s => s.id === id);
   if (!sess) return;
   currentSessionId = id;
+  
+  // Apply canvas config if saved
+  if (sess.canvasConfig) {
+    applyCanvasSize(sess.canvasConfig);
+  } else {
+    // Legacy session without canvas config - use default A1
+    applyCanvasSize(CANVAS_SIZES.a1);
+  }
+  
   deserializeCanvas(sess.strokes);
   updateBadge(sess.name);
   
@@ -2160,6 +2211,7 @@ function doSaveSession(name) {
     if (idx !== -1) {
       sessions[idx].name = name;
       sessions[idx].strokes = serializeCanvas();
+      sessions[idx].canvasConfig = canvasConfig; // Save canvas config
       sessions[idx].updatedAt = Date.now();
     } else {
       currentSessionId = null;
@@ -2167,7 +2219,14 @@ function doSaveSession(name) {
   }
   if (!currentSessionId) {
     const id = 'sess_' + Date.now();
-    sessions.push({ id, name, strokes: serializeCanvas(), createdAt: Date.now(), updatedAt: Date.now() });
+    sessions.push({ 
+      id, 
+      name, 
+      strokes: serializeCanvas(), 
+      canvasConfig: canvasConfig, // Save canvas config
+      createdAt: Date.now(), 
+      updatedAt: Date.now() 
+    });
     currentSessionId = id;
   }
   saveSessions(sessions);
@@ -2258,6 +2317,28 @@ function openNameModal(mode, defaultVal) {
   document.getElementById('name-modal').classList.add('open');
   setTimeout(() => document.getElementById('modal-input').focus(), 200);
 }
+// Handle canvas size button selection
+let selectedCanvasSize = 'a1'; // Default
+
+document.querySelectorAll('.canvas-size-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // Update active state
+    document.querySelectorAll('.canvas-size-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    // Store selection
+    selectedCanvasSize = btn.dataset.canvasSize;
+    
+    // Show/hide custom inputs
+    const customInputs = document.getElementById('custom-size-inputs');
+    if (selectedCanvasSize === 'custom') {
+      customInputs.style.display = 'block';
+    } else {
+      customInputs.style.display = 'none';
+    }
+  });
+});
+
 function closeNameModal() {
   document.getElementById('name-modal').classList.remove('open');
 }
@@ -2268,6 +2349,20 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
   if (!name) { document.getElementById('modal-input').focus(); return; }
   
   if (modalMode === 'new') {
+    // Get canvas size from button selection
+    let config;
+    if (selectedCanvasSize === 'custom') {
+      const w = parseFloat(document.getElementById('custom-width').value);
+      const h = parseFloat(document.getElementById('custom-height').value);
+      if (!w || !h || w < 1 || h < 1) {
+        showToast('Enter valid dimensions');
+        return;
+      }
+      config = { id: 'custom', label: 'Custom', w, h };
+    } else {
+      config = CANVAS_SIZES[selectedCanvasSize];
+    }
+    
     // Clear canvas and start fresh
     currentSessionId = null;
     while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
@@ -2275,6 +2370,9 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
     
     // Clear undo/redo stacks for new session
     clearUndoStack();
+    
+    // Apply canvas size
+    applyCanvasSize(config);
     
     updateUI();
     doSaveSession(name);
