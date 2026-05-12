@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="mobile-web-app-capable" content="yes">
@@ -131,14 +131,6 @@
       width: 100%; height: 100%;
       touch-action: none; cursor: crosshair;
       display: block;
-    }
-
-    #eraserCursor {
-      position: absolute; pointer-events: none;
-      border-radius: 50%;
-      border: 1.5px dashed var(--ink-muted);
-      display: none;
-      transform: translate(-50%, -50%);
     }
 
     #canvasFrame {
@@ -857,9 +849,9 @@
           </clipPath>
         </defs>
         <g id="strokeLayer"></g>
+        <circle id="eraserCursor" r="10" fill="none" stroke="#78716c" stroke-width="2" stroke-dasharray="5,5" display="none"/>
       </svg>
     </div>
-    <div id="eraserCursor"></div>
   </div>
 </div>
 
@@ -1183,6 +1175,7 @@ let undoStack = [];
 let redoStack = [];
 const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
+const SAMPLE_DISTANCE = 2; // Minimum distance (px) between points for drawing optimization
 let currentPath = null, points = [], strokes = [];
 // Canvas size configuration
 let canvasConfig = null; // { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 }
@@ -1214,8 +1207,8 @@ let lastEraseTime = 0;
 let panStartX = 0, panStartY = 0, panStartZoomX = 0, panStartZoomY = 0;
 let zoomIndicatorTimer = null;
 
-// Full canvas: zoom in only (min=1). Card canvases: zoom out allowed (min=0.25)
-function getMinZoom() { return activeSize === 'full' ? 1 : 0.25; }
+// All canvases: allow zoom in and out (0.25x to 8x)
+function getMinZoom() { return MIN_ZOOM; }
 
 function applyZoom(enableTransition = false) {
   // Add snap transition class if requested
@@ -1227,8 +1220,8 @@ function applyZoom(enableTransition = false) {
   // Always apply the transform so strokes stay visible
   zoomLayer.style.transform =
     `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`;
-  // Boundary outline only on card canvases when zoomed out
-  zoomLayer.classList.toggle('zoomed-out', zoomScale < 0.98 && activeSize !== 'full');
+  // Boundary outline when zoomed out
+  zoomLayer.classList.toggle('zoomed-out', zoomScale < 0.98);
 }
 
 function clampPan() {
@@ -1260,7 +1253,7 @@ function showZoomIndicator() {
   const pct = Math.round(zoomScale * 100);
   el.textContent = deg !== 0 ? `${pct}%  ${deg > 0 ? '+' : ''}${deg}°` : `${pct}%`;
   el.classList.add('show');
-  rst.classList.toggle('show', zoomScale > 1.05 || (activeSize !== 'full' && zoomScale < 0.98));
+  rst.classList.toggle('show', zoomScale > 1.05 || zoomScale < 0.98);
   clearTimeout(zoomIndicatorTimer);
   zoomIndicatorTimer = setTimeout(() => el.classList.remove('show'), 1500);
 }
@@ -1344,8 +1337,11 @@ function continueStroke(e) {
   if (!isDrawing) return;
   const pos = getPos(e);
   if (mode === 'eraser') {
-    // Always update cursor position smoothly
-    eraserCursor.style.cssText = `display:block;left:${pos.x}px;top:${pos.y}px;width:${currentSize*2.5}px;height:${currentSize*2.5}px;`;
+    // Position SVG circle cursor using viewBox coordinates
+    eraserCursor.setAttribute('cx', pos.x);
+    eraserCursor.setAttribute('cy', pos.y);
+    eraserCursor.setAttribute('r', currentSize * 1.25);
+    eraserCursor.setAttribute('display', 'block');
     // Throttle eraseAt to once every 50ms for performance
     const now = Date.now();
     if (now - lastEraseTime >= 50) {
@@ -1353,7 +1349,16 @@ function continueStroke(e) {
       eraseAt(pos);
     }
   } else {
-    points.push(pos);
+    // Distance-based sampling: only add point if it's >SAMPLE_DISTANCE from last point
+    if (points.length === 0) {
+      points.push(pos);
+    } else {
+      const last = points[points.length - 1];
+      const dist = Math.hypot(pos.x - last.x, pos.y - last.y);
+      if (dist >= SAMPLE_DISTANCE) {
+        points.push(pos);
+      }
+    }
     if (points.length > 2) currentPath.setAttribute('d', smoothPoints(points));
   }
 }
@@ -1528,7 +1533,7 @@ svg.addEventListener('mouseup', e => {
 svg.addEventListener('mouseleave', e => {
   if (isPanning) { isPanning = false; svg.style.cursor = mode === 'eraser' ? 'none' : 'crosshair'; return; }
   endStroke(e);
-  eraserCursor.style.display = 'none';
+  eraserCursor.setAttribute('display', 'none');
 });
 
 // Prevent context menu on middle-click
@@ -1644,7 +1649,10 @@ canvasArea.addEventListener('wheel', e => {
 svg.addEventListener('mousemove', e => {
   if (mode === 'eraser' && !isDrawing) {
     const pos = getPos(e);
-    eraserCursor.style.cssText = `display:block;left:${pos.x}px;top:${pos.y}px;width:${currentSize*2.5}px;height:${currentSize*2.5}px;`;
+    eraserCursor.setAttribute('cx', pos.x);
+    eraserCursor.setAttribute('cy', pos.y);
+    eraserCursor.setAttribute('r', currentSize * 1.25);
+    eraserCursor.setAttribute('display', 'block');
   }
 });
 
@@ -1671,7 +1679,7 @@ function setMode(m) {
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
   document.querySelectorAll('.mb-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
   svg.style.cursor = isSpaceDown ? 'grab' : (m === 'eraser' ? 'none' : 'crosshair');
-  if (m !== 'eraser') eraserCursor.style.display = 'none';
+  if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
 }
 
 document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tool)));
@@ -2124,9 +2132,14 @@ function renderSessionScreen() {
       const date = new Date(sess.updatedAt).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
       const n = (sess.strokes || []).length;
       
+      // Calculate session size
+      const sessJSON = JSON.stringify(sess);
+      const sessBytes = new Blob([sessJSON]).size;
+      const sessKB = (sessBytes / 1024).toFixed(1);
+      
       cardBody.innerHTML = `
         <div class="ss-card-name" data-id="${sess.id}">${sess.name}</div>
-        <div class="ss-card-meta">${date}<br>${n} stroke${n!==1?'s':''}</div>
+        <div class="ss-card-meta">${date}<br>${n} stroke${n!==1?'s':''}, ${sessKB} KB</div>
         <div class="ss-card-actions">
           <button class="ss-card-btn open-btn" data-id="${sess.id}">Open</button>
           <button class="ss-card-btn del" data-id="${sess.id}">Delete</button>
@@ -2467,19 +2480,14 @@ document.getElementById('import-file-input').addEventListener('change', async (e
     const screenW = Math.round(rect.width);
     const screenH = Math.round(rect.height);
     
-    const CANVAS_SIZES = {
-      full:  { w: null, h: null },
-      a1f:   { w: 3.5,  h: 4.875 },
-      a2f:   { w: 4.25, h: 5.5 }
-    };
-    const sizeInfo = CANVAS_SIZES[activeSize] || CANVAS_SIZES.full;
-    
     let currentW, currentH;
-    if (sizeInfo.w) {
+    if (canvasConfig) {
+      // Use current canvas frame dimensions
       const frame = canvasFrame.getBoundingClientRect();
       currentW = Math.round(frame.width);
       currentH = Math.round(frame.height);
     } else {
+      // Fallback to screen dimensions
       currentW = screenW;
       currentH = screenH;
     }
