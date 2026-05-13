@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v159 — version history</summary>
+        <summary>v160 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v160</span>Migrate storage from localStorage (5 MB) to IndexedDB; per-session writes; storage indicator uses navigator.storage.estimate()</div>
           <div class="vh-item"><span class="vh-tag">v159</span>Bake Move tool offset into path d attributes on drag end; export/import coordinates are now 1:1</div>
           <div class="vh-item"><span class="vh-tag">v158</span>Fix draw/erase coordinate offset after using Move tool</div>
           <div class="vh-item"><span class="vh-tag">v157</span>Move tool icon changed to cursor arrow</div>
@@ -1989,13 +1990,12 @@ function doClear() {
   strokes = []; contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform'); updateUI();
   // Save the cleared state immediately
   if (currentSessionId) {
-    const sessions = getSessions();
-    const idx = sessions.findIndex(s => s.id === currentSessionId);
-    if (idx !== -1) {
-      sessions[idx].strokes = serializeCanvas();
-      sessions[idx].updatedAt = Date.now();
-      saveSessions(sessions);
-    }
+    idbGet(currentSessionId).then(sess => {
+      if (!sess) return;
+      sess.strokes = serializeCanvas();
+      sess.updatedAt = Date.now();
+      idbPut(sess);
+    });
   }
 }
 async function doExport() {
@@ -2006,8 +2006,7 @@ async function doExport() {
   // Get session name for filename
   let sessionName = 'uniglyph';
   if (currentSessionId) {
-    const sessions = getSessions();
-    const session = sessions.find(s => s.id === currentSessionId);
+    const session = await idbGet(currentSessionId);
     if (session && session.name) {
       // Sanitize filename: remove invalid characters
       sessionName = session.name
@@ -2151,14 +2150,89 @@ document.getElementById('tray-backdrop').addEventListener('click', closeTray);
 // ══════════════════════════════════════
 //  SESSION MANAGER
 // ══════════════════════════════════════
-const SESSION_KEY = 'uniglyph_sessions';
+const SESSION_KEY = 'uniglyph_sessions'; // kept only for migration check
 let currentSessionId = null;
 
-function getSessions() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '[]'); } catch { return []; }
+// ── IndexedDB storage layer ──
+const DB_NAME    = 'uniglyph';
+const DB_VERSION = 1;
+const DB_STORE   = 'sessions';
+let _db = null;
+
+const dbReady = new Promise((resolve, reject) => {
+  const req = indexedDB.open(DB_NAME, DB_VERSION);
+  req.onupgradeneeded = e => {
+    const db = e.target.result;
+    if (!db.objectStoreNames.contains(DB_STORE)) {
+      db.createObjectStore(DB_STORE, { keyPath: 'id' });
+    }
+  };
+  req.onsuccess = e => {
+    _db = e.target.result;
+    migrateFromLocalStorage().then(resolve).catch(resolve);
+  };
+  req.onerror = () => reject(req.error);
+});
+
+async function migrateFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const sessions = JSON.parse(raw);
+    if (!sessions.length) return;
+    // Only migrate if IDB is empty (avoid double-import)
+    const existing = await idbGetAll();
+    if (existing.length > 0) { localStorage.removeItem(SESSION_KEY); return; }
+    await Promise.all(sessions.map(s => idbPut(s)));
+    localStorage.removeItem(SESSION_KEY);
+    console.log(`Migrated ${sessions.length} session(s) from localStorage → IndexedDB`);
+  } catch (err) {
+    console.warn('localStorage migration skipped:', err);
+  }
 }
-function saveSessions(sessions) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(sessions));
+
+function idbGetAll() {
+  return new Promise((resolve, reject) => {
+    const req = _db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror  = () => reject(req.error);
+  });
+}
+function idbGet(id) {
+  return new Promise((resolve, reject) => {
+    const req = _db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror  = () => reject(req.error);
+  });
+}
+function idbPut(sess) {
+  return new Promise((resolve, reject) => {
+    const req = _db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(sess);
+    req.onsuccess = () => resolve();
+    req.onerror  = () => reject(req.error);
+  });
+}
+function idbDelete(id) {
+  return new Promise((resolve, reject) => {
+    const req = _db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror  = () => reject(req.error);
+  });
+}
+
+// High-level helpers (sorted by createdAt for consistent ordering)
+async function getSessions() {
+  await dbReady;
+  const all = await idbGetAll();
+  return all.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+async function saveSession(sess) {
+  await dbReady;
+  await idbPut(sess);
+}
+async function removeSession(id) {
+  await dbReady;
+  await idbDelete(id);
 }
 
 function serializeCanvas() {
@@ -2221,9 +2295,9 @@ function makeThumbnail(strokeData) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX-pad} ${minY-pad} ${vw} ${vh}" width="${size}" height="${size}">${pathsHTML}</svg>`;
 }
 
-function renderSessionScreen() {
+async function renderSessionScreen() {
   updateStorageIndicator();
-  const sessions = getSessions();
+  const sessions = await getSessions();
   const body = document.getElementById('ss-body');
   body.innerHTML = '';
   if (!sessions.length) {
@@ -2297,11 +2371,10 @@ function renderSessionScreen() {
   
   // Rename session by clicking name
   body.querySelectorAll('.ss-card-name').forEach(nameEl => {
-    nameEl.addEventListener('click', e => {
-      e.stopPropagation(); // Prevent card click (open session)
+    nameEl.addEventListener('click', async e => {
+      e.stopPropagation();
       const id = nameEl.getAttribute('data-id');
-      const sessions = getSessions();
-      const session = sessions.find(s => s.id === id);
+      const session = await idbGet(id);
       if (session) {
         modalMode = 'rename';
         modalTargetId = id;
@@ -2311,9 +2384,9 @@ function renderSessionScreen() {
   });
 }
 
-function openSession(id) {
-  const sessions = getSessions();
-  const sess = sessions.find(s => s.id === id);
+async function openSession(id) {
+  await dbReady;
+  const sess = await idbGet(id);
   if (!sess) return;
   currentSessionId = id;
 
@@ -2349,12 +2422,10 @@ function openSession(id) {
   });
 }
 
-function deleteSession(id) {
-  let sessions = getSessions();
-  sessions = sessions.filter(s => s.id !== id);
-  saveSessions(sessions);
+async function deleteSession(id) {
+  await removeSession(id);
   if (currentSessionId === id) currentSessionId = null;
-  renderSessionScreen();
+  await renderSessionScreen();
 }
 
 function updateBadge(name) {
@@ -2362,22 +2433,24 @@ function updateBadge(name) {
   if (el) el.textContent = name || 'Unsaved session';
 }
 
-function doSaveSession(name) {
-  const sessions = getSessions();
+async function doSaveSession(name) {
+  await dbReady;
   if (currentSessionId) {
-    const idx = sessions.findIndex(s => s.id === currentSessionId);
-    if (idx !== -1) {
-      sessions[idx].name = name;
-      sessions[idx].strokes = serializeCanvas();
-      sessions[idx].canvasConfig = canvasConfig;
-      sessions[idx].updatedAt = Date.now();
+    const sess = await idbGet(currentSessionId);
+    if (sess) {
+      sess.name = name;
+      sess.strokes = serializeCanvas();
+      sess.canvasConfig = canvasConfig;
+      sess.updatedAt = Date.now();
+      await idbPut(sess);
     } else {
       currentSessionId = null;
     }
   }
   if (!currentSessionId) {
     const id = 'sess_' + Date.now();
-    sessions.push({
+    currentSessionId = id;
+    await idbPut({
       id,
       name,
       strokes: serializeCanvas(),
@@ -2385,24 +2458,23 @@ function doSaveSession(name) {
       createdAt: Date.now(),
       updatedAt: Date.now()
     });
-    currentSessionId = id;
   }
-  saveSessions(sessions);
   updateBadge(name);
 }
 
 // ── Auto-save (debounced 2s after last stroke) ──
 let autoSaveTimer = null;
 function scheduleAutoSave() {
-  if (!currentSessionId) return; // only autosave named sessions
+  if (!currentSessionId) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    const sessions = getSessions();
-    const idx = sessions.findIndex(s => s.id === currentSessionId);
-    if (idx === -1) return;
-    sessions[idx].strokes = serializeCanvas();
-    sessions[idx].updatedAt = Date.now();
-    saveSessions(sessions);
+  const savedId = currentSessionId;
+  autoSaveTimer = setTimeout(async () => {
+    if (!savedId) return;
+    const sess = await idbGet(savedId);
+    if (!sess) return;
+    sess.strokes = serializeCanvas();
+    sess.updatedAt = Date.now();
+    await idbPut(sess);
     showAutoSaveBadge();
   }, 2000);
 }
@@ -2419,34 +2491,41 @@ function showAutoSaveBadge() {
 }
 
 
-function updateStorageIndicator() {
+async function updateStorageIndicator() {
   const indicator = document.getElementById('storage-indicator');
   if (!indicator) return;
-  
-  const data = localStorage.getItem(SESSION_KEY) || '[]';
-  const bytes = new Blob([data]).size;
-  const limitBytes = 5 * 1024 * 1024; // 5 MB
-  const usedMB = (bytes / 1024 / 1024).toFixed(1);
-  const percentage = Math.round((bytes / limitBytes) * 100);
-  
-  let barClass = '';
-  if (percentage >= 90) barClass = 'critical';
-  else if (percentage >= 75) barClass = 'warning';
-  
-  indicator.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <span>${usedMB} MB / 5 MB</span>
-      <span style="color: var(--ink-lighter);">${percentage}%</span>
-    </div>
-    <div class="storage-bar">
-      <div class="storage-bar-fill ${barClass}" style="width: ${percentage}%"></div>
-    </div>
-  `;
-  
-  // Show warning toast if getting full
-  if (percentage >= 90 && !sessionStorage.getItem('storage-warning-shown')) {
-    showToast('Storage almost full! Export and delete old sessions.', 5000);
-    sessionStorage.setItem('storage-warning-shown', 'true');
+
+  if (!navigator.storage || !navigator.storage.estimate) {
+    indicator.innerHTML = '';
+    return;
+  }
+
+  try {
+    const { usage, quota } = await navigator.storage.estimate();
+    const usedMB  = (usage  / 1024 / 1024).toFixed(1);
+    const quotaGB = (quota  / 1024 / 1024 / 1024).toFixed(1);
+    const percentage = quota > 0 ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
+
+    let barClass = '';
+    if (percentage >= 90) barClass = 'critical';
+    else if (percentage >= 75) barClass = 'warning';
+
+    indicator.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span>${usedMB} MB / ${quotaGB} GB</span>
+        <span style="color: var(--ink-lighter);">${percentage}%</span>
+      </div>
+      <div class="storage-bar">
+        <div class="storage-bar-fill ${barClass}" style="width: ${percentage}%"></div>
+      </div>
+    `;
+
+    if (percentage >= 90 && !sessionStorage.getItem('storage-warning-shown')) {
+      showToast('Storage almost full! Export and delete old sessions.', 5000);
+      sessionStorage.setItem('storage-warning-shown', 'true');
+    }
+  } catch {
+    indicator.innerHTML = '';
   }
 }
 
@@ -2510,7 +2589,7 @@ function closeNameModal() {
 }
 
 document.getElementById('modal-cancel').addEventListener('click', closeNameModal);
-document.getElementById('modal-confirm').addEventListener('click', () => {
+document.getElementById('modal-confirm').addEventListener('click', async () => {
   const name = document.getElementById('modal-input').value.trim();
   if (!name) { document.getElementById('modal-input').focus(); return; }
 
@@ -2549,30 +2628,25 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
     applyCanvasSize(config);
 
     updateUI();
-    doSaveSession(name);
+    await doSaveSession(name);
     updateBadge(name);
 
     // Re-center after layout settles
     requestAnimationFrame(() => positionFrame(config.w / config.h));
   } else if (modalMode === 'rename') {
-    // Rename existing session
-    const sessions = getSessions();
-    const idx = sessions.findIndex(s => s.id === modalTargetId);
-    if (idx !== -1) {
-      sessions[idx].name = name;
-      sessions[idx].updatedAt = Date.now();
-      saveSessions(sessions);
-      renderSessionScreen();
+    const sess = await idbGet(modalTargetId);
+    if (sess) {
+      sess.name = name;
+      sess.updatedAt = Date.now();
+      await idbPut(sess);
+      await renderSessionScreen();
       showToast('Session renamed');
-      // If renaming the current session, update badge
-      if (currentSessionId === modalTargetId) {
-        updateBadge(name);
-      }
+      if (currentSessionId === modalTargetId) updateBadge(name);
     }
     closeNameModal();
   } else {
     // Save mode
-    doSaveSession(name);
+    await doSaveSession(name);
     showToast('Session saved');
     closeNameModal();
   }
@@ -2633,7 +2707,6 @@ document.getElementById('import-file-input').addEventListener('change', async (e
   
   try {
     const zip = await JSZip.loadAsync(file);
-    const sessions = getSessions();
     
     // Get base name from zip filename
     const baseName = file.name.replace(/\.zip$/i, '');
@@ -2697,16 +2770,14 @@ document.getElementById('import-file-input').addEventListener('change', async (e
     
     if (allStrokes.length > 0) {
       const id = 'sess_' + Date.now();
-      sessions.push({
+      await idbPut({
         id,
         name: baseName,
         strokes: allStrokes,
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
-      
-      saveSessions(sessions);
-      renderSessionScreen();
+      await renderSessionScreen();
       showToast(`Imported "${baseName}" with ${allStrokes.length} stroke${allStrokes.length > 1 ? 's' : ''}`);
     } else {
       showToast('No valid SVG files found in zip');
@@ -2733,16 +2804,14 @@ if (newBtn) {
 }
 
 // Home buttons — always go back to session screen
-function goHome() {
+async function goHome() {
   closeTray();
-  // Save current session before going home
   if (currentSessionId && strokes.length > 0) {
-    const sessions = getSessions();
-    const idx = sessions.findIndex(s => s.id === currentSessionId);
-    if (idx !== -1) {
-      sessions[idx].strokes = serializeCanvas();
-      sessions[idx].updatedAt = Date.now();
-      saveSessions(sessions);
+    const sess = await idbGet(currentSessionId);
+    if (sess) {
+      sess.strokes = serializeCanvas();
+      sess.updatedAt = Date.now();
+      await idbPut(sess);
     }
   }
   showSessionScreen();
