@@ -1115,8 +1115,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v153 — version history</summary>
+        <summary>v154 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v154</span>Hide canvas size selector in rename modal; fix confirm button label per mode</div>
           <div class="vh-item"><span class="vh-tag">v153</span>Fix canvas centering on new session create: same hideSessionScreen-first + rAF pattern</div>
           <div class="vh-item"><span class="vh-tag">v152</span>Fix canvas centering on session open: re-run positionFrame after layout settles via rAF</div>
           <div class="vh-item"><span class="vh-tag">v151</span>Canvas always opens centered at 1:1 zoom; fix positionFrame running before canvas-area is visible</div>
@@ -1157,7 +1158,7 @@
     <div class="modal-title" id="modal-title">Name your session</div>
     <input type="text" id="modal-input" placeholder="e.g. Birthday Card" maxlength="40">
     
-    <div style="margin-top: 16px;">
+    <div id="modal-canvas-section" style="margin-top: 16px;">
       <div style="font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 500; margin-bottom: 12px; color: #1c1917;">Canvas Size</div>
       
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
@@ -2374,8 +2375,15 @@ function openNameModal(mode, defaultVal) {
     'save': 'Save session',
     'rename': 'Rename session'
   };
+  const confirmLabels = {
+    'new': 'Create',
+    'save': 'Save',
+    'rename': 'Rename'
+  };
   document.getElementById('modal-title').textContent = titles[mode] || 'Name your session';
+  document.getElementById('modal-confirm').textContent = confirmLabels[mode] || 'Confirm';
   document.getElementById('modal-input').value = defaultVal || '';
+  document.getElementById('modal-canvas-section').style.display = mode === 'rename' ? 'none' : '';
   document.getElementById('name-modal').classList.add('open');
   setTimeout(() => document.getElementById('modal-input').focus(), 200);
 }
