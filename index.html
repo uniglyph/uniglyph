@@ -84,7 +84,7 @@
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: var(--paper);
+      background: var(--paper-warm);
       color: var(--ink);
       font-family: 'DM Mono', monospace;
       -webkit-tap-highlight-color: transparent;
@@ -265,6 +265,7 @@
       z-index: 9999; touch-action: manipulation;
     }
     @media (min-width: 600px) { #mobile-toolbar { display: none; } }
+    @media (min-width: 600px) { .tray, .tray-backdrop { display: none !important; } }
 
     /* Also account for mobile toolbar space in canvas */
     @media (max-width: 599px) {
@@ -389,7 +390,7 @@
     ══════════════════════════════ */
     #session-screen {
       position: fixed; inset: 0;
-      background: var(--paper);
+      background: var(--paper-warm);
       z-index: 200;
       display: flex; flex-direction: column;
       overflow: hidden;
@@ -658,7 +659,7 @@
     /* Update toast */
     #update-toast {
       position: fixed;
-      top: 20px; left: 50%;
+      top: calc(env(safe-area-inset-top, 0px) + 20px); left: 50%;
       transform: translateX(-50%);
       background: var(--ink);
       color: var(--paper);
@@ -673,7 +674,7 @@
       pointer-events: none;
       transition: opacity 0.3s;
     }
-    
+
     #update-toast.show {
       opacity: 1;
       pointer-events: auto;
@@ -850,7 +851,7 @@
 
     #update-toast {
       position: fixed;
-      top: 20px; left: 50%;
+      top: calc(env(safe-area-inset-top, 0px) + 20px); left: 50%;
       transform: translateX(-50%);
       background: var(--ink);
       color: var(--paper);
@@ -865,7 +866,7 @@
       pointer-events: none;
       transition: opacity 0.3s;
     }
-    
+
     #update-toast.show {
       opacity: 1;
       pointer-events: auto;
@@ -1114,8 +1115,15 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v143 — version history</summary>
+        <summary>v150 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v150</span>Fix iOS status bar color bleed: match home screen background to canvas area (paper-warm)</div>
+          <div class="vh-item"><span class="vh-tag">v149</span>Fix iOS status bar color bleed: force GPU layer on session screen via translateZ(0)</div>
+          <div class="vh-item"><span class="vh-tag">v148</span>Fix iOS status bar color bleed: hide canvas-area entirely when session screen is visible</div>
+          <div class="vh-item"><span class="vh-tag">v147</span>Fix iOS status bar color bleed on return to home; drop GPU layer on session screen</div>
+          <div class="vh-item"><span class="vh-tag">v146</span>Hide mobile toolbar on home/session screen</div>
+          <div class="vh-item"><span class="vh-tag">v145</span>Remove toast on new session creation; fix update toast position below iOS status bar</div>
+          <div class="vh-item"><span class="vh-tag">v144</span>Fix tray visible on desktop; close tray on orientation change; safe-area toolbar fix; canvas cropped to frame</div>
           <div class="vh-item"><span class="vh-tag">v143</span>Added version history widget on home page</div>
           <div class="vh-item"><span class="vh-tag">v142</span>Mobile toolbar z-index fix; toolbar visible on iPhone Safari</div>
           <div class="vh-item"><span class="vh-tag">v139</span>Pinch-to-zoom on all canvases (0.25×–8×)</div>
@@ -1817,7 +1825,9 @@ function applyCanvasSize(config) {
   }
 }
 
+window.addEventListener('orientationchange', () => closeTray());
 window.addEventListener('resize', () => {
+  closeTray();
   if (canvasConfig) {
     const ratio = canvasConfig.w / canvasConfig.h;
     const viewBoxW = Math.round(canvasConfig.w * DPI);
@@ -2274,7 +2284,6 @@ function doSaveSession(name) {
   }
   saveSessions(sessions);
   updateBadge(name);
-  showToast('Session saved');
 }
 
 // ── Auto-save (debounced 2s after last stroke) ──
@@ -2339,11 +2348,13 @@ function updateStorageIndicator() {
 function showSessionScreen() {
   renderSessionScreen();
   document.getElementById('session-screen').classList.remove('hidden');
-  document.getElementById('canvas-area').style.pointerEvents = 'none';
+  document.getElementById('canvas-area').style.display = 'none';
+  document.getElementById('mobile-toolbar').style.display = 'none';
 }
 function hideSessionScreen() {
   document.getElementById('session-screen').classList.add('hidden');
-  document.getElementById('canvas-area').style.pointerEvents = '';
+  document.getElementById('canvas-area').style.display = '';
+  document.getElementById('mobile-toolbar').style.display = '';
 }
 
 // Name modal
@@ -2441,6 +2452,7 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
   } else {
     // Save mode
     doSaveSession(name);
+    showToast('Session saved');
     closeNameModal();
   }
 });

@@ -2,7 +2,7 @@
   "name": "Uniglyph",
   "short_name": "Uniglyph",
   "description": "SVG Drawing Studio for greeting card illustration",
-  "start_url": "/uniglyph/",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#faf9f7",
