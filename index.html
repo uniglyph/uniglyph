@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="mobile-web-app-capable" content="yes">
@@ -101,6 +101,7 @@
         radial-gradient(circle at 20px 20px, #d6cfc6 1px, transparent 0),
         var(--paper-warm);
       background-size: 40px 40px;
+      z-index: 1;
     }
 
     /* Tablet: canvas leaves room for sidebar + bottom bar */
@@ -116,15 +117,6 @@
       width: 100%; height: 100%;
       transform-origin: 0 0;
       will-change: transform;
-      background: #ffffff;
-    }
-/* Visible canvas boundary shown when zoomed out on full canvas */
-    #zoom-layer.zoomed-out {
-      box-shadow:
-        0 0 0 1px var(--border),
-        0 0 0 4px var(--paper),
-        0 0 0 5px var(--border);
-      border-radius: 2px;
     }
 
     #drawingSvg {
@@ -137,7 +129,7 @@
       position: absolute;
       border: 2px dashed rgba(100,90,80,0.4);
       border-radius: 2px;
-      box-shadow: 0 0 0 9999px rgba(230,224,216,0.5);
+      background: #ffffff;
       display: none; z-index: 5;
       overflow: hidden;
     }
@@ -265,17 +257,18 @@
        MOBILE TOOLBAR (< 600px)
     ══════════════════════════════ */
     #mobile-toolbar {
-      position: fixed; bottom: 0; left: 0; right: 0; height: 68px;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: calc(68px + env(safe-area-inset-bottom));
       background: var(--paper-warm); border-top: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-around;
-      padding: 0 4px; z-index: 50;
-      touch-action: manipulation;
+      padding: 0 4px; padding-bottom: env(safe-area-inset-bottom);
+      z-index: 9999; touch-action: manipulation;
     }
     @media (min-width: 600px) { #mobile-toolbar { display: none; } }
 
     /* Also account for mobile toolbar space in canvas */
     @media (max-width: 599px) {
-      #canvas-area { bottom: 68px; }
+      #canvas-area { bottom: calc(68px + env(safe-area-inset-bottom)); }
     }
 
     .mb-btn {
@@ -320,10 +313,10 @@
     .tray-backdrop.open { opacity: 1; pointer-events: all; }
 
     .tray {
-      position: fixed; bottom: 0; left: 0; right: 0;
+      position: fixed; bottom: calc(68px + env(safe-area-inset-bottom)); left: 0; right: 0;
       background: var(--paper-warm);
       border-radius: 18px 18px 0 0; border-top: 1px solid var(--border);
-      z-index: 70; padding: 10px 20px 40px;
+      z-index: 70; padding: 10px 20px 24px;
       transform: translateY(100%);
       transition: transform 0.28s cubic-bezier(0.32,0.72,0,1);
       touch-action: manipulation;
@@ -582,6 +575,49 @@
     
     .storage-bar-fill.critical {
       background: var(--accent);
+    }
+
+    /* Version history (collapsible, sits under storage indicator) */
+    #version-history {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+    #version-history summary {
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 0;
+    }
+    #version-history summary::-webkit-details-marker { display: none; }
+    #version-history summary::before {
+      content: '▸';
+      font-size: 9px;
+      display: inline-block;
+      transition: transform 0.15s;
+    }
+    #version-history[open] summary::before { transform: rotate(90deg); }
+    .vh-list {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 300px;
+    }
+    .vh-item {
+      font-size: 10px;
+      line-height: 1.5;
+      display: flex;
+      gap: 8px;
+    }
+    .vh-tag {
+      font-family: 'DM Mono', monospace;
+      color: var(--ink);
+      flex-shrink: 0;
+      min-width: 34px;
     }
 
     /* New session button responsive */
@@ -1077,6 +1113,16 @@
   <path class="st2" d="M157.59,22.02c1.31-.58,2.44-1.27,4.13-.73.2,1.29.42,2.72.63,4.07-2.59,1.17-4.58.84-6.24-.94.15-.92.4-1.81,1.47-2.41Z"/>
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
+      <details id="version-history">
+        <summary>v143 — version history</summary>
+        <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v143</span>Added version history widget on home page</div>
+          <div class="vh-item"><span class="vh-tag">v142</span>Mobile toolbar z-index fix; toolbar visible on iPhone Safari</div>
+          <div class="vh-item"><span class="vh-tag">v139</span>Pinch-to-zoom on all canvases (0.25×–8×)</div>
+          <div class="vh-item"><span class="vh-tag">v137</span>Session management, distance-based sampling, export</div>
+          <div class="vh-item"><span class="vh-tag">v132</span>Coordinate system overhaul (ViewBox)</div>
+        </div>
+      </details>
     </div>
     <div style="display: flex; gap: 8px;">
       <button class="ss-new-btn" id="ss-import-btn">
@@ -1744,22 +1790,6 @@ function positionFrame(ratio, viewBoxW, viewBoxH) {
     left: frameX + 'px', top: frameY + 'px',
     width: frameW + 'px', height: frameH + 'px', display: 'block'
   });
-  // Update SVG clip rect in viewBox coordinate space
-  const clipRect = document.getElementById('canvasClipRect');
-  if (clipRect) {
-    // Convert frame position from screen pixels to viewBox coordinates
-    const clipX = (frameX / areaW) * viewBoxW;
-    const clipY = (frameY / areaH) * viewBoxH;
-    const clipW = (frameW / areaW) * viewBoxW;
-    const clipH = (frameH / areaH) * viewBoxH;
-    
-    clipRect.setAttribute('x', clipX);
-    clipRect.setAttribute('y', clipY);
-    clipRect.setAttribute('width', clipW);
-    clipRect.setAttribute('height', clipH);
-  }
-  // Don't apply clip-path - it's causing masking issues
-  // document.getElementById('strokeLayer').setAttribute('clip-path', 'url(#canvasClip)');
 }
 
 // Set canvas size and viewBox based on config
@@ -2360,7 +2390,7 @@ document.getElementById('modal-cancel').addEventListener('click', closeNameModal
 document.getElementById('modal-confirm').addEventListener('click', () => {
   const name = document.getElementById('modal-input').value.trim();
   if (!name) { document.getElementById('modal-input').focus(); return; }
-  
+
   if (modalMode === 'new') {
     // Get canvas size from button selection
     let config;
