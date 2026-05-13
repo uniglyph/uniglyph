@@ -1115,8 +1115,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v152 — version history</summary>
+        <summary>v153 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v153</span>Fix canvas centering on new session create: same hideSessionScreen-first + rAF pattern</div>
           <div class="vh-item"><span class="vh-tag">v152</span>Fix canvas centering on session open: re-run positionFrame after layout settles via rAF</div>
           <div class="vh-item"><span class="vh-tag">v151</span>Canvas always opens centered at 1:1 zoom; fix positionFrame running before canvas-area is visible</div>
           <div class="vh-item"><span class="vh-tag">v150</span>Fix iOS status bar color bleed: match home screen background to canvas area (paper-warm)</div>
@@ -2428,18 +2429,26 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
     currentSessionId = null;
     while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
     strokes = [];
-    
+
     // Clear undo/redo stacks for new session
     clearUndoStack();
-    
+
+    // Unhide canvas-area first so positionFrame() gets real dimensions
+    hideSessionScreen();
+    closeNameModal();
+
+    // Reset zoom/pan so canvas always opens centered at 1:1
+    resetZoom();
+
     // Apply canvas size
     applyCanvasSize(config);
-    
+
     updateUI();
     doSaveSession(name);
     updateBadge(name);
-    closeNameModal();
-    hideSessionScreen();
+
+    // Re-center after layout settles
+    requestAnimationFrame(() => positionFrame(config.w / config.h));
   } else if (modalMode === 'rename') {
     // Rename existing session
     const sessions = getSessions();
