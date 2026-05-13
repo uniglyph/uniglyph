@@ -1115,8 +1115,10 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v150 — version history</summary>
+        <summary>v152 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v152</span>Fix canvas centering on session open: re-run positionFrame after layout settles via rAF</div>
+          <div class="vh-item"><span class="vh-tag">v151</span>Canvas always opens centered at 1:1 zoom; fix positionFrame running before canvas-area is visible</div>
           <div class="vh-item"><span class="vh-tag">v150</span>Fix iOS status bar color bleed: match home screen background to canvas area (paper-warm)</div>
           <div class="vh-item"><span class="vh-tag">v149</span>Fix iOS status bar color bleed: force GPU layer on session screen via translateZ(0)</div>
           <div class="vh-item"><span class="vh-tag">v148</span>Fix iOS status bar color bleed: hide canvas-area entirely when session screen is visible</div>
@@ -2226,22 +2228,27 @@ function openSession(id) {
   const sess = sessions.find(s => s.id === id);
   if (!sess) return;
   currentSessionId = id;
-  
+
+  // Unhide canvas-area first so positionFrame() gets real dimensions
+  hideSessionScreen();
+
+  // Reset zoom/pan so canvas always opens centered at 1:1
+  resetZoom();
+
   // Apply canvas config if saved
-  if (sess.canvasConfig) {
-    applyCanvasSize(sess.canvasConfig);
-  } else {
-    // Legacy session without canvas config - use default A1
-    applyCanvasSize(CANVAS_SIZES.a1);
-  }
-  
+  const config = sess.canvasConfig || CANVAS_SIZES.a1;
+  applyCanvasSize(config);
+
   deserializeCanvas(sess.strokes);
   updateBadge(sess.name);
-  
+
   // Clear undo/redo when switching sessions
   clearUndoStack();
-  
-  hideSessionScreen();
+
+  // Re-center after layout settles — iOS may not update clientWidth synchronously
+  requestAnimationFrame(() => {
+    positionFrame(config.w / config.h);
+  });
 }
 
 function deleteSession(id) {
