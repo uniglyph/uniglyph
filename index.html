@@ -942,6 +942,12 @@
       </svg>
       Erase
     </button>
+    <button class="tool-btn" data-tool="select">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <path d="M4 2l.01 16 4-4 2.55 6.25 2.32-.95L10.4 13l5.6-.01L4 2z"/>
+      </svg>
+      Move
+    </button>
   </div>
   <div class="sidebar-section">
     <div class="sec-label">Canvas</div>
@@ -997,6 +1003,14 @@
       </svg>
     </div>
     <span class="mb-label">Erase</span>
+  </button>
+  <button class="mb-btn" data-tool="select">
+    <div class="mb-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <path d="M4 2l.01 16 4-4 2.55 6.25 2.32-.95L10.4 13l5.6-.01L4 2z"/>
+      </svg>
+    </div>
+    <span class="mb-label">Move</span>
   </button>
   <button class="mb-btn" id="mb-brush-btn">
     <div class="mb-icon">
@@ -1115,8 +1129,10 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v155 — version history</summary>
+        <summary>v157 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v157</span>Move tool icon changed to cursor arrow</div>
+          <div class="vh-item"><span class="vh-tag">v156</span>Add Move tool: drag all canvas content as a unit; clamped to canvas; persisted per session; undo/redo support</div>
           <div class="vh-item"><span class="vh-tag">v155</span>Remove toast when clearing the canvas</div>
           <div class="vh-item"><span class="vh-tag">v154</span>Hide canvas size selector in rename modal; fix confirm button label per mode</div>
           <div class="vh-item"><span class="vh-tag">v153</span>Fix canvas centering on new session create: same hideSessionScreen-first + rAF pattern</div>
@@ -1236,6 +1252,9 @@ const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
 const SAMPLE_DISTANCE = 2; // Minimum distance (px) between points for drawing optimization
 let currentPath = null, points = [], strokes = [];
+// ── Content move state ──
+let contentTX = 0, contentTY = 0;
+let isMovingContent = false, moveStartClientX = 0, moveStartClientY = 0, movePrevTX = 0, movePrevTY = 0;
 // Canvas size configuration
 let canvasConfig = null; // { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 }
 let toastTimer = null;
@@ -1325,6 +1344,24 @@ function resetZoom() {
 }
 document.getElementById('zoom-reset').addEventListener('click', resetZoom);
 
+// ── Content Move ──
+function applyContentTransform() {
+  strokeLayer.setAttribute('transform', `translate(${contentTX} ${contentTY})`);
+}
+
+function clampContentOffset(tx, ty) {
+  if (!strokes.length) return { x: tx, y: ty };
+  const vbW = svg.viewBox.baseVal.width;
+  const vbH = svg.viewBox.baseVal.height;
+  // getBBox returns bbox in strokeLayer's local space (unaffected by its own transform)
+  const bbox = strokeLayer.getBBox();
+  const margin = 50; // viewBox units that must remain visible on canvas
+  return {
+    x: Math.max(margin - bbox.x - bbox.width, Math.min(vbW - margin - bbox.x, tx)),
+    y: Math.max(margin - bbox.y - bbox.height, Math.min(vbH - margin - bbox.y, ty))
+  };
+}
+
 // ── Toast ──
 function showToast(msg) {
   toast.textContent = msg;
@@ -1369,6 +1406,17 @@ function smoothPoints(pts) {
 
 function startStroke(e) {
   e.preventDefault();
+  if (mode === 'select') {
+    if (!strokes.length) return;
+    isMovingContent = true;
+    const src = e.touches ? e.touches[0] : e;
+    moveStartClientX = src.clientX;
+    moveStartClientY = src.clientY;
+    movePrevTX = contentTX;
+    movePrevTY = contentTY;
+    svg.style.cursor = 'grabbing';
+    return;
+  }
   isDrawing = true;
   const pos = getPos(e);
   points = [pos];
@@ -1393,6 +1441,19 @@ function startStroke(e) {
 
 function continueStroke(e) {
   e.preventDefault();
+  if (mode === 'select' && isMovingContent) {
+    const src = e.touches ? e.touches[0] : e;
+    const dx_screen = src.clientX - moveStartClientX;
+    const dy_screen = src.clientY - moveStartClientY;
+    const svgRect = svg.getBoundingClientRect();
+    const scaleX = svg.viewBox.baseVal.width / svgRect.width;
+    const scaleY = svg.viewBox.baseVal.height / svgRect.height;
+    const clamped = clampContentOffset(movePrevTX + dx_screen * scaleX, movePrevTY + dy_screen * scaleY);
+    contentTX = clamped.x;
+    contentTY = clamped.y;
+    applyContentTransform();
+    return;
+  }
   if (!isDrawing) return;
   const pos = getPos(e);
   if (mode === 'eraser') {
@@ -1423,6 +1484,18 @@ function continueStroke(e) {
 }
 
 function endStroke(e) {
+  if (mode === 'select' && isMovingContent) {
+    isMovingContent = false;
+    svg.style.cursor = 'grab';
+    if (contentTX !== movePrevTX || contentTY !== movePrevTY) {
+      undoStack.push({ type: 'move', tx: movePrevTX, ty: movePrevTY });
+      if (undoStack.length > MAX_UNDO_LEVELS) undoStack.shift();
+      redoStack = [];
+      scheduleAutoSave();
+    }
+    updateUI();
+    return;
+  }
   if (!isDrawing) return;
   isDrawing = false;
   if (mode === 'draw' && currentPath) {
@@ -1737,7 +1810,9 @@ function setMode(m) {
   
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
   document.querySelectorAll('.mb-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
-  svg.style.cursor = isSpaceDown ? 'grab' : (m === 'eraser' ? 'none' : 'crosshair');
+  if (m === 'select') svg.style.cursor = 'grab';
+  else if (m === 'eraser') svg.style.cursor = 'none';
+  else svg.style.cursor = isSpaceDown ? 'grab' : 'crosshair';
   if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
 }
 
@@ -1865,32 +1940,32 @@ function clearUndoStack() {
 }
 
 function doUndo() {
-  if (undoStack.length === 0) {
-    return;
+  if (undoStack.length === 0) return;
+  const entry = undoStack.pop();
+  if (entry && entry.type === 'move') {
+    redoStack.push({ type: 'move', tx: contentTX, ty: contentTY });
+    contentTX = entry.tx; contentTY = entry.ty;
+    applyContentTransform();
+    scheduleAutoSave();
+  } else {
+    redoStack.push(serializeCanvas());
+    deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
   }
-  
-  // Save current state to redo stack
-  const currentState = serializeCanvas();
-  redoStack.push(currentState);
-  
-  // Pop and restore previous state
-  const previousState = undoStack.pop();
-  deserializeCanvas(previousState);
   updateUI();
 }
 
 function doRedo() {
-  if (redoStack.length === 0) {
-    return;
+  if (redoStack.length === 0) return;
+  const entry = redoStack.pop();
+  if (entry && entry.type === 'move') {
+    undoStack.push({ type: 'move', tx: contentTX, ty: contentTY });
+    contentTX = entry.tx; contentTY = entry.ty;
+    applyContentTransform();
+    scheduleAutoSave();
+  } else {
+    undoStack.push(serializeCanvas());
+    deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
   }
-  
-  // Save current state to undo stack
-  const currentState = serializeCanvas();
-  undoStack.push(currentState);
-  
-  // Pop and restore next state
-  const nextState = redoStack.pop();
-  deserializeCanvas(nextState);
   updateUI();
 }
 
@@ -1901,7 +1976,7 @@ function doClear() {
   saveToUndoStack();
   
   while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
-  strokes = []; updateUI();
+  strokes = []; contentTX = 0; contentTY = 0; applyContentTransform(); updateUI();
   // Save the cleared state immediately
   if (currentSessionId) {
     const sessions = getSessions();
@@ -2243,6 +2318,9 @@ function openSession(id) {
   applyCanvasSize(config);
 
   deserializeCanvas(sess.strokes);
+  contentTX = sess.contentOffset ? sess.contentOffset.x : 0;
+  contentTY = sess.contentOffset ? sess.contentOffset.y : 0;
+  applyContentTransform();
   updateBadge(sess.name);
 
   // Clear undo/redo when switching sessions
@@ -2274,7 +2352,8 @@ function doSaveSession(name) {
     if (idx !== -1) {
       sessions[idx].name = name;
       sessions[idx].strokes = serializeCanvas();
-      sessions[idx].canvasConfig = canvasConfig; // Save canvas config
+      sessions[idx].canvasConfig = canvasConfig;
+      sessions[idx].contentOffset = { x: contentTX, y: contentTY };
       sessions[idx].updatedAt = Date.now();
     } else {
       currentSessionId = null;
@@ -2282,13 +2361,14 @@ function doSaveSession(name) {
   }
   if (!currentSessionId) {
     const id = 'sess_' + Date.now();
-    sessions.push({ 
-      id, 
-      name, 
-      strokes: serializeCanvas(), 
-      canvasConfig: canvasConfig, // Save canvas config
-      createdAt: Date.now(), 
-      updatedAt: Date.now() 
+    sessions.push({
+      id,
+      name,
+      strokes: serializeCanvas(),
+      canvasConfig: canvasConfig,
+      contentOffset: { x: contentTX, y: contentTY },
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     });
     currentSessionId = id;
   }
@@ -2306,6 +2386,7 @@ function scheduleAutoSave() {
     const idx = sessions.findIndex(s => s.id === currentSessionId);
     if (idx === -1) return;
     sessions[idx].strokes = serializeCanvas();
+    sessions[idx].contentOffset = { x: contentTX, y: contentTY };
     sessions[idx].updatedAt = Date.now();
     saveSessions(sessions);
     showAutoSaveBadge();
@@ -2438,6 +2519,8 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
     currentSessionId = null;
     while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
     strokes = [];
+    contentTX = 0; contentTY = 0;
+    applyContentTransform();
 
     // Clear undo/redo stacks for new session
     clearUndoStack();
