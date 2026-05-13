@@ -1115,8 +1115,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v154 — version history</summary>
+        <summary>v155 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v155</span>Remove toast when clearing the canvas</div>
           <div class="vh-item"><span class="vh-tag">v154</span>Hide canvas size selector in rename modal; fix confirm button label per mode</div>
           <div class="vh-item"><span class="vh-tag">v153</span>Fix canvas centering on new session create: same hideSessionScreen-first + rAF pattern</div>
           <div class="vh-item"><span class="vh-tag">v152</span>Fix canvas centering on session open: re-run positionFrame after layout settles via rAF</div>
@@ -1900,7 +1901,7 @@ function doClear() {
   saveToUndoStack();
   
   while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
-  strokes = []; updateUI(); showToast('Canvas cleared — tap Undo to restore');
+  strokes = []; updateUI();
   // Save the cleared state immediately
   if (currentSessionId) {
     const sessions = getSessions();
