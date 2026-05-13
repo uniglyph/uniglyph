@@ -345,7 +345,7 @@
     }
     .custom-label {
       font-size: 9px; color: white; letter-spacing: 0.1em;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.6); pointer-events: none;
+      text-shadow: 0 1px 3px #00000099; pointer-events: none;
     }
 
     /* Size tray */
@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v158 — version history</summary>
+        <summary>v159 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v159</span>Bake Move tool offset into path d attributes on drag end; export/import coordinates are now 1:1</div>
           <div class="vh-item"><span class="vh-tag">v158</span>Fix draw/erase coordinate offset after using Move tool</div>
           <div class="vh-item"><span class="vh-tag">v157</span>Move tool icon changed to cursor arrow</div>
           <div class="vh-item"><span class="vh-tag">v156</span>Add Move tool: drag all canvas content as a unit; clamped to canvas; persisted per session; undo/redo support</div>
@@ -1363,6 +1364,17 @@ function clampContentOffset(tx, ty) {
   };
 }
 
+// ── Path offset baking ──
+// Rewrites M, L, Q path commands by adding (tx, ty) to all coordinates.
+// Used to bake a strokeLayer transform into the actual path data.
+function offsetPath(d, tx, ty) {
+  return d
+    .replace(/([ML])\s*([-\d.e]+)\s+([-\d.e]+)/g, (_, cmd, a, b) =>
+      `${cmd} ${parseFloat(a) + tx} ${parseFloat(b) + ty}`)
+    .replace(/Q\s*([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)/g, (_, a, b, c, f) =>
+      `Q ${parseFloat(a) + tx} ${parseFloat(b) + ty} ${parseFloat(c) + tx} ${parseFloat(f) + ty}`);
+}
+
 // ── Toast ──
 function showToast(msg) {
   toast.textContent = msg;
@@ -1388,11 +1400,9 @@ function getPos(e) {
   const viewBoxW = viewBoxParts[2];
   const viewBoxH = viewBoxParts[3];
   
-  // Convert from SVG pixels to viewBox coordinates,
-  // then subtract the strokeLayer's content offset so paths
-  // are placed in strokeLayer's local coordinate space
-  const viewBoxX = (svgX / svgRect.width) * viewBoxW - contentTX;
-  const viewBoxY = (svgY / svgRect.height) * viewBoxH - contentTY;
+  // Convert from SVG pixels to viewBox coordinates
+  const viewBoxX = (svgX / svgRect.width) * viewBoxW;
+  const viewBoxY = (svgY / svgRect.height) * viewBoxH;
 
   return { x: viewBoxX, y: viewBoxY };
 }
@@ -1491,9 +1501,17 @@ function endStroke(e) {
     isMovingContent = false;
     svg.style.cursor = 'grab';
     if (contentTX !== movePrevTX || contentTY !== movePrevTY) {
-      undoStack.push({ type: 'move', tx: movePrevTX, ty: movePrevTY });
+      // Save the pre-move stroke state for undo (path d values before baking)
+      undoStack.push(serializeCanvas());
       if (undoStack.length > MAX_UNDO_LEVELS) undoStack.shift();
       redoStack = [];
+      // Bake the visual offset into each path's d attribute
+      strokes.forEach(p => {
+        p.setAttribute('d', offsetPath(p.getAttribute('d'), contentTX, contentTY));
+      });
+      contentTX = 0;
+      contentTY = 0;
+      strokeLayer.removeAttribute('transform');
       scheduleAutoSave();
     }
     updateUI();
@@ -1945,30 +1963,19 @@ function clearUndoStack() {
 function doUndo() {
   if (undoStack.length === 0) return;
   const entry = undoStack.pop();
-  if (entry && entry.type === 'move') {
-    redoStack.push({ type: 'move', tx: contentTX, ty: contentTY });
-    contentTX = entry.tx; contentTY = entry.ty;
-    applyContentTransform();
-    scheduleAutoSave();
-  } else {
-    redoStack.push(serializeCanvas());
-    deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
-  }
+  redoStack.push(serializeCanvas());
+  deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
+  // Baking ensures contentTX/TY are always 0, but reset for safety
+  contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
   updateUI();
 }
 
 function doRedo() {
   if (redoStack.length === 0) return;
   const entry = redoStack.pop();
-  if (entry && entry.type === 'move') {
-    undoStack.push({ type: 'move', tx: contentTX, ty: contentTY });
-    contentTX = entry.tx; contentTY = entry.ty;
-    applyContentTransform();
-    scheduleAutoSave();
-  } else {
-    undoStack.push(serializeCanvas());
-    deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
-  }
+  undoStack.push(serializeCanvas());
+  deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
+  contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
   updateUI();
 }
 
@@ -1979,7 +1986,7 @@ function doClear() {
   saveToUndoStack();
   
   while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
-  strokes = []; contentTX = 0; contentTY = 0; applyContentTransform(); updateUI();
+  strokes = []; contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform'); updateUI();
   // Save the cleared state immediately
   if (currentSessionId) {
     const sessions = getSessions();
@@ -2321,9 +2328,16 @@ function openSession(id) {
   applyCanvasSize(config);
 
   deserializeCanvas(sess.strokes);
-  contentTX = sess.contentOffset ? sess.contentOffset.x : 0;
-  contentTY = sess.contentOffset ? sess.contentOffset.y : 0;
-  applyContentTransform();
+  // Migrate legacy contentOffset: bake into path coordinates and discard
+  const legacyTX = sess.contentOffset ? sess.contentOffset.x : 0;
+  const legacyTY = sess.contentOffset ? sess.contentOffset.y : 0;
+  if (legacyTX !== 0 || legacyTY !== 0) {
+    strokes.forEach(p => {
+      p.setAttribute('d', offsetPath(p.getAttribute('d'), legacyTX, legacyTY));
+    });
+    scheduleAutoSave(); // re-save with baked coords and no contentOffset
+  }
+  contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
   updateBadge(sess.name);
 
   // Clear undo/redo when switching sessions
@@ -2356,7 +2370,6 @@ function doSaveSession(name) {
       sessions[idx].name = name;
       sessions[idx].strokes = serializeCanvas();
       sessions[idx].canvasConfig = canvasConfig;
-      sessions[idx].contentOffset = { x: contentTX, y: contentTY };
       sessions[idx].updatedAt = Date.now();
     } else {
       currentSessionId = null;
@@ -2369,7 +2382,6 @@ function doSaveSession(name) {
       name,
       strokes: serializeCanvas(),
       canvasConfig: canvasConfig,
-      contentOffset: { x: contentTX, y: contentTY },
       createdAt: Date.now(),
       updatedAt: Date.now()
     });
@@ -2389,7 +2401,6 @@ function scheduleAutoSave() {
     const idx = sessions.findIndex(s => s.id === currentSessionId);
     if (idx === -1) return;
     sessions[idx].strokes = serializeCanvas();
-    sessions[idx].contentOffset = { x: contentTX, y: contentTY };
     sessions[idx].updatedAt = Date.now();
     saveSessions(sessions);
     showAutoSaveBadge();
@@ -2522,8 +2533,7 @@ document.getElementById('modal-confirm').addEventListener('click', () => {
     currentSessionId = null;
     while (strokeLayer.firstChild) strokeLayer.removeChild(strokeLayer.firstChild);
     strokes = [];
-    contentTX = 0; contentTY = 0;
-    applyContentTransform();
+    contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
 
     // Clear undo/redo stacks for new session
     clearUndoStack();
