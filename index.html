@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v157 — version history</summary>
+        <summary>v158 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v158</span>Fix draw/erase coordinate offset after using Move tool</div>
           <div class="vh-item"><span class="vh-tag">v157</span>Move tool icon changed to cursor arrow</div>
           <div class="vh-item"><span class="vh-tag">v156</span>Add Move tool: drag all canvas content as a unit; clamped to canvas; persisted per session; undo/redo support</div>
           <div class="vh-item"><span class="vh-tag">v155</span>Remove toast when clearing the canvas</div>
@@ -1387,10 +1388,12 @@ function getPos(e) {
   const viewBoxW = viewBoxParts[2];
   const viewBoxH = viewBoxParts[3];
   
-  // Convert from SVG pixels to viewBox coordinates
-  const viewBoxX = (svgX / svgRect.width) * viewBoxW;
-  const viewBoxY = (svgY / svgRect.height) * viewBoxH;
-  
+  // Convert from SVG pixels to viewBox coordinates,
+  // then subtract the strokeLayer's content offset so paths
+  // are placed in strokeLayer's local coordinate space
+  const viewBoxX = (svgX / svgRect.width) * viewBoxW - contentTX;
+  const viewBoxY = (svgY / svgRect.height) * viewBoxH - contentTY;
+
   return { x: viewBoxX, y: viewBoxY };
 }
 
