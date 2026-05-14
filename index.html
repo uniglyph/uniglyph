@@ -886,6 +886,7 @@
           </clipPath>
         </defs>
         <g id="strokeLayer"></g>
+        <g id="selectionOverlay" style="pointer-events:none"></g>
         <circle id="eraserCursor" r="10" fill="none" stroke="#78716c" stroke-width="2" stroke-dasharray="5,5" display="none"/>
       </svg>
     </div>
@@ -1129,8 +1130,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v165 — version history</summary>
+        <summary>v166 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v166</span>Individual path selection: tap to select (blue halo highlight), drag to move, tap empty space to deselect; bakes offset on release; undo/redo supported</div>
           <div class="vh-item"><span class="vh-tag">v165</span>Fix artifact on curved self-intersecting strokes: replace greedy direction-reversal while loop with single-point check at 135° threshold</div>
           <div class="vh-item"><span class="vh-tag">v164</span>Return key in name modal now only dismisses keyboard; session creation requires explicit tap of Create button</div>
           <div class="vh-item"><span class="vh-tag">v163</span>Dismiss iOS keyboard on modal close: blur input in closeNameModal and on Enter key</div>
@@ -1237,9 +1239,10 @@
 
 <script>
 // ── Elements ──
-const svg          = document.getElementById('drawingSvg');
-const strokeLayer  = document.getElementById('strokeLayer');
-const eraserCursor = document.getElementById('eraserCursor');
+const svg             = document.getElementById('drawingSvg');
+const strokeLayer     = document.getElementById('strokeLayer');
+const selectionOverlay= document.getElementById('selectionOverlay');
+const eraserCursor    = document.getElementById('eraserCursor');
 const layerPills   = document.getElementById('layerPills');
 const statusMsg    = document.getElementById('status-msg');
 const canvasFrame  = document.getElementById('canvasFrame');
@@ -1260,9 +1263,18 @@ const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
 const SAMPLE_DISTANCE = 2; // Minimum distance (px) between points for drawing optimization
 let currentPath = null, points = [], strokes = [];
-// ── Content move state ──
+// ── Content move state (legacy — kept for session migration) ──
 let contentTX = 0, contentTY = 0;
 let isMovingContent = false, moveStartClientX = 0, moveStartClientY = 0, movePrevTX = 0, movePrevTY = 0;
+// ── Single-path selection state ──
+let selectedPath   = null;  // the selected SVG path element
+let selHighlight   = null;  // blue halo in selectionOverlay
+let isMovingSelected = false;
+let selMoveStartX  = 0, selMoveStartY  = 0; // client coords at drag start
+let selTX = 0, selTY = 0;                   // current drag offset (viewBox units)
+let selPrevTX = 0, selPrevTY = 0;           // offset before this drag began
+let selMovedEnough = false;                  // true once drag exceeds tap threshold
+let selInitialBBox = null;                   // bbox at drag start (for clamping)
 // Canvas size configuration
 let canvasConfig = null; // { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 }
 let toastTimer = null;
@@ -1370,6 +1382,56 @@ function clampContentOffset(tx, ty) {
   };
 }
 
+// ── Single-path selection helpers ──
+
+// Sample the path at regular intervals and test distance to (vbX, vbY).
+// Uses max(strokeWidth/2, 12) as the hit radius so thin strokes stay tappable.
+function hitTestPath(path, vbX, vbY) {
+  try {
+    const hitR = Math.max(parseFloat(path.getAttribute('stroke-width')) / 2, 12);
+    const len   = path.getTotalLength();
+    const steps = Math.max(20, Math.floor(len / 8));
+    for (let i = 0; i <= steps; i++) {
+      const pt = path.getPointAtLength((i / steps) * len);
+      if (Math.hypot(pt.x - vbX, pt.y - vbY) <= hitR) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function selectPath(path) {
+  clearSelection();
+  selectedPath = path;
+  // Blue halo — slightly wider stroke, semi-transparent, rendered behind the original
+  selHighlight = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  selHighlight.setAttribute('fill', 'none');
+  selHighlight.setAttribute('stroke', '#3b82f6');
+  selHighlight.setAttribute('stroke-width', parseFloat(path.getAttribute('stroke-width')) + 10);
+  selHighlight.setAttribute('stroke-linecap', 'round');
+  selHighlight.setAttribute('stroke-linejoin', 'round');
+  selHighlight.setAttribute('opacity', '0.4');
+  selHighlight.setAttribute('d', path.getAttribute('d'));
+  selectionOverlay.appendChild(selHighlight);
+  svg.style.cursor = 'grab';
+}
+
+function clearSelection() {
+  if (selectedPath) { selectedPath.removeAttribute('transform'); selectedPath = null; }
+  if (selHighlight)  { selHighlight.remove(); selHighlight = null; }
+  selTX = 0; selTY = 0; selInitialBBox = null; isMovingSelected = false;
+  if (mode === 'select') svg.style.cursor = 'crosshair';
+}
+
+function clampSelectionOffset(tx, ty) {
+  if (!selInitialBBox) return { x: tx, y: ty };
+  const vbW = svg.viewBox.baseVal.width, vbH = svg.viewBox.baseVal.height;
+  const { x, y, width, height } = selInitialBBox;
+  const margin = 50;
+  const clampedX = Math.max(margin - x - width,  Math.min(vbW - margin - x, tx));
+  const clampedY = Math.max(margin - y - height, Math.min(vbH - margin - y, ty));
+  return { x: clampedX, y: clampedY };
+}
+
 // ── Path offset baking ──
 // Rewrites M, L, Q path commands by adding (tx, ty) to all coordinates.
 // Used to bake a strokeLayer transform into the actual path data.
@@ -1430,14 +1492,24 @@ function smoothPoints(pts) {
 function startStroke(e) {
   e.preventDefault();
   if (mode === 'select') {
-    if (!strokes.length) return;
-    isMovingContent = true;
     const src = e.touches ? e.touches[0] : e;
-    moveStartClientX = src.clientX;
-    moveStartClientY = src.clientY;
-    movePrevTX = contentTX;
-    movePrevTY = contentTY;
-    svg.style.cursor = 'grabbing';
+    selMoveStartX = src.clientX;
+    selMoveStartY = src.clientY;
+    selMovedEnough = false;
+    const pos = getPos(e);
+    // Hit-test strokes in reverse order (topmost first)
+    let hit = null;
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      if (hitTestPath(strokes[i], pos.x, pos.y)) { hit = strokes[i]; break; }
+    }
+    if (hit) {
+      if (hit !== selectedPath) selectPath(hit);
+      isMovingSelected = true;
+      selPrevTX = selTX; selPrevTY = selTY;
+      try { selInitialBBox = hit.getBBox(); } catch (_) { selInitialBBox = null; }
+    } else {
+      clearSelection();
+    }
     return;
   }
   isDrawing = true;
@@ -1464,17 +1536,23 @@ function startStroke(e) {
 
 function continueStroke(e) {
   e.preventDefault();
-  if (mode === 'select' && isMovingContent) {
+  if (mode === 'select') {
+    if (!isMovingSelected || !selectedPath) return;
     const src = e.touches ? e.touches[0] : e;
-    const dx_screen = src.clientX - moveStartClientX;
-    const dy_screen = src.clientY - moveStartClientY;
+    const dx_screen = src.clientX - selMoveStartX;
+    const dy_screen = src.clientY - selMoveStartY;
+    // Require 8px of movement before treating as a drag (not a tap)
+    if (!selMovedEnough && Math.hypot(dx_screen, dy_screen) < 8) return;
+    selMovedEnough = true;
+    svg.style.cursor = 'grabbing';
     const svgRect = svg.getBoundingClientRect();
-    const scaleX = svg.viewBox.baseVal.width / svgRect.width;
+    const scaleX = svg.viewBox.baseVal.width  / svgRect.width;
     const scaleY = svg.viewBox.baseVal.height / svgRect.height;
-    const clamped = clampContentOffset(movePrevTX + dx_screen * scaleX, movePrevTY + dy_screen * scaleY);
-    contentTX = clamped.x;
-    contentTY = clamped.y;
-    applyContentTransform();
+    const clamped = clampSelectionOffset(selPrevTX + dx_screen * scaleX, selPrevTY + dy_screen * scaleY);
+    selTX = clamped.x; selTY = clamped.y;
+    const t = `translate(${selTX} ${selTY})`;
+    selectedPath.setAttribute('transform', t);
+    if (selHighlight) selHighlight.setAttribute('transform', t);
     return;
   }
   if (!isDrawing) return;
@@ -1507,21 +1585,23 @@ function continueStroke(e) {
 }
 
 function endStroke(e) {
-  if (mode === 'select' && isMovingContent) {
-    isMovingContent = false;
-    svg.style.cursor = 'grab';
-    if (contentTX !== movePrevTX || contentTY !== movePrevTY) {
-      // Save the pre-move stroke state for undo (path d values before baking)
-      undoStack.push(serializeCanvas());
-      if (undoStack.length > MAX_UNDO_LEVELS) undoStack.shift();
-      redoStack = [];
-      // Bake the visual offset into each path's d attribute
-      strokes.forEach(p => {
-        p.setAttribute('d', offsetPath(p.getAttribute('d'), contentTX, contentTY));
-      });
-      contentTX = 0;
-      contentTY = 0;
-      strokeLayer.removeAttribute('transform');
+  if (mode === 'select') {
+    isMovingSelected = false;
+    if (selectedPath) svg.style.cursor = 'grab';
+    // Only bake if the path actually moved
+    if (selectedPath && selMovedEnough && (selTX !== selPrevTX || selTY !== selPrevTY)) {
+      // Snapshot pre-move state for undo (d attributes are still original at this point)
+      saveToUndoStack();
+      // Bake the visual offset into the path's d attribute
+      const baked = offsetPath(selectedPath.getAttribute('d'), selTX, selTY);
+      selectedPath.setAttribute('d', baked);
+      selectedPath.removeAttribute('transform');
+      // Keep highlight in sync with baked position
+      if (selHighlight) {
+        selHighlight.setAttribute('d', baked);
+        selHighlight.removeAttribute('transform');
+      }
+      selTX = 0; selTY = 0;
       scheduleAutoSave();
     }
     updateUI();
@@ -1829,6 +1909,7 @@ svg.addEventListener('mousemove', e => {
 
 // ── Mode ──
 function setMode(m) {
+  if (mode === 'select') clearSelection(); // clean up any active selection
   // Save current size before switching modes
   if (mode === 'draw') {
     brushSize = currentSize;
@@ -1849,7 +1930,7 @@ function setMode(m) {
   
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
   document.querySelectorAll('.mb-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
-  if (m === 'select') svg.style.cursor = 'grab';
+  if (m === 'select') svg.style.cursor = 'crosshair'; // crosshair = ready to pick a path
   else if (m === 'eraser') svg.style.cursor = 'none';
   else svg.style.cursor = isSpaceDown ? 'grab' : 'crosshair';
   if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
@@ -1973,6 +2054,7 @@ function saveToUndoStack() {
 
 // Clear undo/redo stacks (when switching sessions or starting fresh)
 function clearUndoStack() {
+  clearSelection();
   undoStack = [];
   redoStack = [];
   updateUI();
@@ -1980,16 +2062,17 @@ function clearUndoStack() {
 
 function doUndo() {
   if (undoStack.length === 0) return;
+  clearSelection();
   const entry = undoStack.pop();
   redoStack.push(serializeCanvas());
   deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
-  // Baking ensures contentTX/TY are always 0, but reset for safety
   contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
   updateUI();
 }
 
 function doRedo() {
   if (redoStack.length === 0) return;
+  clearSelection();
   const entry = redoStack.pop();
   undoStack.push(serializeCanvas());
   deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
