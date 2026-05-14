@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v162 — version history</summary>
+        <summary>v163 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v163</span>Dismiss iOS keyboard on modal close: blur input in closeNameModal and on Enter key</div>
           <div class="vh-item"><span class="vh-tag">v162</span>Strip phantom lift points: two-pass filter in endStroke — large jump detection then direction-reversal detection</div>
           <div class="vh-item"><span class="vh-tag">v161</span>Fix flat stroke ends and crossed-endpoint artifact: remove trailing L command from smoothPoints, ending paths at the final Q midpoint instead</div>
           <div class="vh-item"><span class="vh-tag">v160</span>Migrate storage from localStorage (5 MB) to IndexedDB; per-session writes; storage indicator uses navigator.storage.estimate()</div>
@@ -2600,6 +2601,7 @@ document.querySelectorAll('.canvas-size-btn').forEach(btn => {
 });
 
 function closeNameModal() {
+  document.getElementById('modal-input').blur(); // dismiss iOS keyboard
   document.getElementById('name-modal').classList.remove('open');
 }
 
@@ -2684,7 +2686,7 @@ document.addEventListener('keyup', e => {
 });
 
 document.getElementById('modal-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('modal-confirm').click();
+  if (e.key === 'Enter') { e.target.blur(); document.getElementById('modal-confirm').click(); }
   if (e.key === 'Escape') closeNameModal();
 });
 
