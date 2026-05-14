@@ -949,6 +949,13 @@
       </svg>
       Move
     </button>
+    <button class="tool-btn" data-tool="lasso">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 8 C5 4.5 9 3 12 3 C15 3 19 4.5 19 8 C19 11 16.5 12.5 13 13 L12 20 L10.5 14" stroke-dasharray="3 2"/>
+        <circle cx="11.5" cy="14.5" r="1" fill="currentColor" stroke="none"/>
+      </svg>
+      Lasso
+    </button>
   </div>
   <div class="sidebar-section">
     <div class="sec-label">Canvas</div>
@@ -1012,6 +1019,15 @@
       </svg>
     </div>
     <span class="mb-label">Move</span>
+  </button>
+  <button class="mb-btn" data-tool="lasso">
+    <div class="mb-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 8 C5 4.5 9 3 12 3 C15 3 19 4.5 19 8 C19 11 16.5 12.5 13 13 L12 20 L10.5 14" stroke-dasharray="3 2"/>
+        <circle cx="11.5" cy="14.5" r="1" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
+    <span class="mb-label">Lasso</span>
   </button>
   <button class="mb-btn" id="mb-brush-btn">
     <div class="mb-icon">
@@ -1266,15 +1282,20 @@ let currentPath = null, points = [], strokes = [];
 // ── Content move state (legacy — kept for session migration) ──
 let contentTX = 0, contentTY = 0;
 let isMovingContent = false, moveStartClientX = 0, moveStartClientY = 0, movePrevTX = 0, movePrevTY = 0;
-// ── Single-path selection state ──
-let selectedPath   = null;  // the selected SVG path element
-let selHighlight   = null;  // blue halo in selectionOverlay
+// ── Multi-path selection state ──
+let selectedPaths  = new Set();  // selected SVG path elements
+let selHighlights  = new Map();  // path → blue halo element in selectionOverlay
 let isMovingSelected = false;
 let selMoveStartX  = 0, selMoveStartY  = 0; // client coords at drag start
 let selTX = 0, selTY = 0;                   // current drag offset (viewBox units)
 let selPrevTX = 0, selPrevTY = 0;           // offset before this drag began
 let selMovedEnough = false;                  // true once drag exceeds tap threshold
-let selInitialBBox = null;                   // bbox at drag start (for clamping)
+let selInitialBBox = null;                   // combined bbox at drag start (for clamping)
+// ── Lasso state ──
+let isLassoing  = false;
+let lassoPoints = [];
+let lassoEl     = null;
+const LASSO_SAMPLE_DIST = 5; // min viewBox px between lasso sample points
 // Canvas size configuration
 let canvasConfig = null; // { id: 'a1', label: 'A1 Card', w: 3.5, h: 4.875 }
 let toastTimer = null;
@@ -1399,27 +1420,70 @@ function hitTestPath(path, vbX, vbY) {
   return false;
 }
 
+// Add a blue halo highlight for one path (internal helper).
+function _addHighlight(path) {
+  const h = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  h.setAttribute('fill', 'none');
+  h.setAttribute('stroke', '#3b82f6');
+  h.setAttribute('stroke-width', parseFloat(path.getAttribute('stroke-width')) + 10);
+  h.setAttribute('stroke-linecap', 'round');
+  h.setAttribute('stroke-linejoin', 'round');
+  h.setAttribute('opacity', '0.4');
+  h.setAttribute('d', path.getAttribute('d'));
+  selectionOverlay.appendChild(h);
+  selHighlights.set(path, h);
+}
+
+// Select a single path (clears any previous selection).
 function selectPath(path) {
   clearSelection();
-  selectedPath = path;
-  // Blue halo — slightly wider stroke, semi-transparent, rendered behind the original
-  selHighlight = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  selHighlight.setAttribute('fill', 'none');
-  selHighlight.setAttribute('stroke', '#3b82f6');
-  selHighlight.setAttribute('stroke-width', parseFloat(path.getAttribute('stroke-width')) + 10);
-  selHighlight.setAttribute('stroke-linecap', 'round');
-  selHighlight.setAttribute('stroke-linejoin', 'round');
-  selHighlight.setAttribute('opacity', '0.4');
-  selHighlight.setAttribute('d', path.getAttribute('d'));
-  selectionOverlay.appendChild(selHighlight);
+  selectedPaths.add(path);
+  _addHighlight(path);
   svg.style.cursor = 'grab';
 }
 
+// Select a Set of paths (clears any previous selection).
+function selectPaths(pathSet) {
+  clearSelection();
+  for (const path of pathSet) {
+    selectedPaths.add(path);
+    _addHighlight(path);
+  }
+  if (selectedPaths.size > 0) svg.style.cursor = 'grab';
+}
+
 function clearSelection() {
-  if (selectedPath) { selectedPath.removeAttribute('transform'); selectedPath = null; }
-  if (selHighlight)  { selHighlight.remove(); selHighlight = null; }
+  for (const path of selectedPaths) path.removeAttribute('transform');
+  selectedPaths.clear();
+  for (const h of selHighlights.values()) h.remove();
+  selHighlights.clear();
   selTX = 0; selTY = 0; selInitialBBox = null; isMovingSelected = false;
-  if (mode === 'select') svg.style.cursor = 'crosshair';
+  if (mode === 'select' || mode === 'lasso') svg.style.cursor = 'crosshair';
+}
+
+// Ray-casting point-in-polygon test.
+function pointInPolygon(px, py, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+// Returns true if any sampled point on path falls inside the lasso polygon.
+function strokeIntersectsLasso(path, polygon) {
+  try {
+    const len   = path.getTotalLength();
+    const steps = Math.max(20, Math.floor(len / 8));
+    for (let i = 0; i <= steps; i++) {
+      const pt = path.getPointAtLength((i / steps) * len);
+      if (pointInPolygon(pt.x, pt.y, polygon)) return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 function clampSelectionOffset(tx, ty) {
@@ -1491,6 +1555,19 @@ function smoothPoints(pts) {
 
 function startStroke(e) {
   e.preventDefault();
+  if (mode === 'lasso') {
+    isLassoing  = true;
+    lassoPoints = [getPos(e)];
+    lassoEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    lassoEl.setAttribute('fill', 'rgba(59,130,246,0.08)');
+    lassoEl.setAttribute('stroke', '#3b82f6');
+    lassoEl.setAttribute('stroke-width', '2');
+    lassoEl.setAttribute('stroke-dasharray', '6 4');
+    lassoEl.setAttribute('stroke-linecap', 'round');
+    lassoEl.setAttribute('d', `M ${lassoPoints[0].x} ${lassoPoints[0].y}`);
+    selectionOverlay.appendChild(lassoEl);
+    return;
+  }
   if (mode === 'select') {
     const src = e.touches ? e.touches[0] : e;
     selMoveStartX = src.clientX;
@@ -1502,11 +1579,39 @@ function startStroke(e) {
     for (let i = strokes.length - 1; i >= 0; i--) {
       if (hitTestPath(strokes[i], pos.x, pos.y)) { hit = strokes[i]; break; }
     }
+    // Helper: compute combined bbox of all currently selected paths.
+    function selectionBBox() {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of selectedPaths) {
+        const b = p.getBBox();
+        minX = Math.min(minX, b.x);   minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+      }
+      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
+
     if (hit) {
-      if (hit !== selectedPath) selectPath(hit);
+      // Tap on already-selected path → drag all; tap on new path → select just that one
+      if (!selectedPaths.has(hit)) selectPath(hit);
       isMovingSelected = true;
       selPrevTX = selTX; selPrevTY = selTY;
-      try { selInitialBBox = hit.getBBox(); } catch (_) { selInitialBBox = null; }
+      try { selInitialBBox = selectionBBox(); } catch (_) { selInitialBBox = null; }
+    } else if (selectedPaths.size > 0) {
+      // Missed every path stroke — check if the tap landed inside (or near)
+      // the selection's bounding area so the user can grab the group from empty space.
+      try {
+        const bbox = selectionBBox();
+        const pad  = 30; // viewBox units of tolerance around the bbox
+        const inArea = pos.x >= bbox.x - pad && pos.x <= bbox.x + bbox.width  + pad &&
+                       pos.y >= bbox.y - pad && pos.y <= bbox.y + bbox.height + pad;
+        if (inArea) {
+          isMovingSelected = true;
+          selPrevTX = selTX; selPrevTY = selTY;
+          selInitialBBox = bbox;
+        } else {
+          clearSelection();
+        }
+      } catch (_) { clearSelection(); }
     } else {
       clearSelection();
     }
@@ -1536,8 +1641,20 @@ function startStroke(e) {
 
 function continueStroke(e) {
   e.preventDefault();
+  if (mode === 'lasso') {
+    if (!isLassoing || !lassoEl) return;
+    const pos  = getPos(e);
+    const last = lassoPoints[lassoPoints.length - 1];
+    if (Math.hypot(pos.x - last.x, pos.y - last.y) >= LASSO_SAMPLE_DIST) {
+      lassoPoints.push(pos);
+      let d = `M ${lassoPoints[0].x} ${lassoPoints[0].y}`;
+      for (let i = 1; i < lassoPoints.length; i++) d += ` L ${lassoPoints[i].x} ${lassoPoints[i].y}`;
+      lassoEl.setAttribute('d', d + ' Z');
+    }
+    return;
+  }
   if (mode === 'select') {
-    if (!isMovingSelected || !selectedPath) return;
+    if (!isMovingSelected || !selectedPaths.size) return;
     const src = e.touches ? e.touches[0] : e;
     const dx_screen = src.clientX - selMoveStartX;
     const dy_screen = src.clientY - selMoveStartY;
@@ -1551,8 +1668,8 @@ function continueStroke(e) {
     const clamped = clampSelectionOffset(selPrevTX + dx_screen * scaleX, selPrevTY + dy_screen * scaleY);
     selTX = clamped.x; selTY = clamped.y;
     const t = `translate(${selTX} ${selTY})`;
-    selectedPath.setAttribute('transform', t);
-    if (selHighlight) selHighlight.setAttribute('transform', t);
+    for (const path of selectedPaths) path.setAttribute('transform', t);
+    for (const h of selHighlights.values()) h.setAttribute('transform', t);
     return;
   }
   if (!isDrawing) return;
@@ -1585,21 +1702,37 @@ function continueStroke(e) {
 }
 
 function endStroke(e) {
+  if (mode === 'lasso') {
+    if (!isLassoing) return;
+    isLassoing = false;
+    if (lassoEl) { lassoEl.remove(); lassoEl = null; }
+    const captured = lassoPoints.slice();
+    lassoPoints = [];
+    if (captured.length >= 3) {
+      const hits = new Set(strokes.filter(p => strokeIntersectsLasso(p, captured)));
+      if (hits.size > 0) {
+        // Switch to Move mode first (setMode clears selection), then apply new selection
+        setMode('select');
+        selectPaths(hits);
+      }
+    }
+    updateUI();
+    return;
+  }
   if (mode === 'select') {
     isMovingSelected = false;
-    if (selectedPath) svg.style.cursor = 'grab';
-    // Only bake if the path actually moved
-    if (selectedPath && selMovedEnough && (selTX !== selPrevTX || selTY !== selPrevTY)) {
-      // Snapshot pre-move state for undo (d attributes are still original at this point)
+    if (selectedPaths.size > 0) svg.style.cursor = 'grab';
+    // Only bake if the paths actually moved
+    if (selectedPaths.size > 0 && selMovedEnough && (selTX !== selPrevTX || selTY !== selPrevTY)) {
+      // Snapshot pre-move state for undo
       saveToUndoStack();
-      // Bake the visual offset into the path's d attribute
-      const baked = offsetPath(selectedPath.getAttribute('d'), selTX, selTY);
-      selectedPath.setAttribute('d', baked);
-      selectedPath.removeAttribute('transform');
-      // Keep highlight in sync with baked position
-      if (selHighlight) {
-        selHighlight.setAttribute('d', baked);
-        selHighlight.removeAttribute('transform');
+      // Bake the visual offset into each selected path's d attribute
+      for (const path of selectedPaths) {
+        const baked = offsetPath(path.getAttribute('d'), selTX, selTY);
+        path.setAttribute('d', baked);
+        path.removeAttribute('transform');
+        const h = selHighlights.get(path);
+        if (h) { h.setAttribute('d', baked); h.removeAttribute('transform'); }
       }
       selTX = 0; selTY = 0;
       scheduleAutoSave();
@@ -1909,7 +2042,7 @@ svg.addEventListener('mousemove', e => {
 
 // ── Mode ──
 function setMode(m) {
-  if (mode === 'select') clearSelection(); // clean up any active selection
+  if (mode === 'select' || mode === 'lasso') clearSelection(); // clean up any active selection
   // Save current size before switching modes
   if (mode === 'draw') {
     brushSize = currentSize;
@@ -1930,7 +2063,7 @@ function setMode(m) {
   
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
   document.querySelectorAll('.mb-btn[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === m));
-  if (m === 'select') svg.style.cursor = 'crosshair'; // crosshair = ready to pick a path
+  if (m === 'select' || m === 'lasso') svg.style.cursor = 'crosshair';
   else if (m === 'eraser') svg.style.cursor = 'none';
   else svg.style.cursor = isSpaceDown ? 'grab' : 'crosshair';
   if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
@@ -1945,6 +2078,18 @@ function setColor(c) {
   const dot = document.getElementById('mb-color-dot');
   dot.style.background = c;
   dot.style.borderColor = (c === '#f5f0eb') ? 'var(--ink)' : c;
+  // If paths are selected in Move mode, recolor them all
+  if (mode === 'select' && selectedPaths.size > 0) {
+    saveToUndoStack();
+    for (const path of selectedPaths) {
+      path.setAttribute('stroke', c);
+      const h = selHighlights.get(path);
+      // Keep highlight d in sync (color stays blue, no change needed)
+      // But update the highlight stroke-width in case path stroke-width differs — no-op here
+    }
+    scheduleAutoSave();
+    return; // don't switch away from select mode
+  }
   if (mode === 'eraser') setMode('draw');
 }
 
@@ -1953,7 +2098,8 @@ document.querySelectorAll('.swatch[data-color]').forEach(s => {
     document.querySelectorAll('.swatch[data-color]').forEach(x => x.classList.remove('active'));
     s.classList.add('active');
     setColor(s.dataset.color);
-    if (s.closest('#tray-color')) closeTray();
+    // Keep tray open on mobile when paths are selected so user can keep picking
+    if (s.closest('#tray-color') && !(mode === 'select' && selectedPaths.size > 0)) closeTray();
   });
 });
 
@@ -1964,7 +2110,8 @@ document.getElementById('colorPickerTablet').addEventListener('input', e => {
 document.getElementById('colorPickerMobile').addEventListener('input', e => {
   document.querySelectorAll('.swatch[data-color]').forEach(x => x.classList.remove('active'));
   setColor(e.target.value);
-  closeTray();
+  // Keep tray open when paths are selected so user can keep adjusting
+  if (!(mode === 'select' && selectedPaths.size > 0)) closeTray();
 });
 
 // ── Sliders ──
