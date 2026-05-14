@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v161 — version history</summary>
+        <summary>v162 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v162</span>Strip phantom lift points: two-pass filter in endStroke — large jump detection then direction-reversal detection</div>
           <div class="vh-item"><span class="vh-tag">v161</span>Fix flat stroke ends and crossed-endpoint artifact: remove trailing L command from smoothPoints, ending paths at the final Q midpoint instead</div>
           <div class="vh-item"><span class="vh-tag">v160</span>Migrate storage from localStorage (5 MB) to IndexedDB; per-session writes; storage indicator uses navigator.storage.estimate()</div>
           <div class="vh-item"><span class="vh-tag">v159</span>Bake Move tool offset into path d attributes on drag end; export/import coordinates are now 1:1</div>
@@ -1527,19 +1528,28 @@ function endStroke(e) {
   isDrawing = false;
   if (mode === 'draw' && currentPath) {
     // Filter out phantom lift points (stylus artifacts)
+    // Pass 1: remove final point if it jumped far (large coordinate artifact)
     if (points.length >= 2) {
       const last = points[points.length - 1];
       const prev = points[points.length - 2];
-      const dist = Math.hypot(last.x - prev.x, last.y - prev.y);
-      // If final point jumps >50px, it's likely a lift artifact — remove it
-      if (dist > 50) {
+      if (Math.hypot(last.x - prev.x, last.y - prev.y) > 50) {
         points.pop();
-        // Redraw path without the phantom point
-        if (points.length >= 2) {
-          currentPath.setAttribute('d', smoothPoints(points));
-        }
       }
     }
+    // Pass 2: strip any trailing points that reverse direction — the hallmark
+    // of a stylus lift artifact (contact-patch centroid drifts as pen leaves surface)
+    while (points.length >= 3) {
+      const n = points.length;
+      const s1x = points[n-2].x - points[n-3].x, s1y = points[n-2].y - points[n-3].y;
+      const s2x = points[n-1].x - points[n-2].x, s2y = points[n-1].y - points[n-2].y;
+      // Negative dot product means the last segment turns back more than 90°
+      if (s1x * s2x + s1y * s2y < 0) {
+        points.pop();
+      } else {
+        break;
+      }
+    }
+    if (points.length >= 2) currentPath.setAttribute('d', smoothPoints(points));
     // Only save strokes with at least 2 points (prevents accidental tap dots)
     if (points.length >= 2) {
       strokes.push(currentPath);
