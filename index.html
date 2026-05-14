@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v164 — version history</summary>
+        <summary>v165 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v165</span>Fix artifact on curved self-intersecting strokes: replace greedy direction-reversal while loop with single-point check at 135° threshold</div>
           <div class="vh-item"><span class="vh-tag">v164</span>Return key in name modal now only dismisses keyboard; session creation requires explicit tap of Create button</div>
           <div class="vh-item"><span class="vh-tag">v163</span>Dismiss iOS keyboard on modal close: blur input in closeNameModal and on Enter key</div>
           <div class="vh-item"><span class="vh-tag">v162</span>Strip phantom lift points: two-pass filter in endStroke — large jump detection then direction-reversal detection</div>
@@ -1532,23 +1533,22 @@ function endStroke(e) {
     // Filter out phantom lift points (stylus artifacts)
     // Pass 1: remove final point if it jumped far (large coordinate artifact)
     if (points.length >= 2) {
-      const last = points[points.length - 1];
-      const prev = points[points.length - 2];
-      if (Math.hypot(last.x - prev.x, last.y - prev.y) > 50) {
+      if (Math.hypot(points[points.length-1].x - points[points.length-2].x,
+                     points[points.length-1].y - points[points.length-2].y) > 50) {
         points.pop();
       }
     }
-    // Pass 2: strip any trailing points that reverse direction — the hallmark
-    // of a stylus lift artifact (contact-patch centroid drifts as pen leaves surface)
-    while (points.length >= 3) {
+    // Pass 2: single check — remove the last point only if it snaps back more
+    // than 135° (cos < −0.7). Genuine lift artifacts reverse nearly 180°;
+    // intentional tight curves rarely exceed 135° between adjacent sampled points.
+    // (No while loop — that was too greedy and trimmed intentional curve reversals.)
+    if (points.length >= 3) {
       const n = points.length;
       const s1x = points[n-2].x - points[n-3].x, s1y = points[n-2].y - points[n-3].y;
       const s2x = points[n-1].x - points[n-2].x, s2y = points[n-1].y - points[n-2].y;
-      // Negative dot product means the last segment turns back more than 90°
-      if (s1x * s2x + s1y * s2y < 0) {
+      const len1 = Math.hypot(s1x, s1y), len2 = Math.hypot(s2x, s2y);
+      if (len1 > 0 && len2 > 0 && (s1x*s2x + s1y*s2y) / (len1 * len2) < -0.7) {
         points.pop();
-      } else {
-        break;
       }
     }
     if (points.length >= 2) currentPath.setAttribute('d', smoothPoints(points));
