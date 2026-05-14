@@ -1129,8 +1129,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v160 — version history</summary>
+        <summary>v161 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v161</span>Fix flat stroke ends and crossed-endpoint artifact: remove trailing L command from smoothPoints, ending paths at the final Q midpoint instead</div>
           <div class="vh-item"><span class="vh-tag">v160</span>Migrate storage from localStorage (5 MB) to IndexedDB; per-session writes; storage indicator uses navigator.storage.estimate()</div>
           <div class="vh-item"><span class="vh-tag">v159</span>Bake Move tool offset into path d attributes on drag end; export/import coordinates are now 1:1</div>
           <div class="vh-item"><span class="vh-tag">v158</span>Fix draw/erase coordinate offset after using Move tool</div>
@@ -1410,12 +1411,16 @@ function getPos(e) {
 
 function smoothPoints(pts) {
   if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`;
+  // 2-point case: plain line segment with round caps at both ends
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 1; i < pts.length - 1; i++) {
     const mx = (pts[i].x + pts[i+1].x) / 2, my = (pts[i].y + pts[i+1].y) / 2;
     d += ` Q ${pts[i].x} ${pts[i].y} ${mx} ${my}`;
   }
-  return d + ` L ${pts[pts.length-1].x} ${pts[pts.length-1].y}`;
+  // End at the last Q midpoint — avoids the straight L segment that caused
+  // flat-end artifacts and the crossed-endpoint kink near stroke lift-off.
+  return d;
 }
 
 function startStroke(e) {
