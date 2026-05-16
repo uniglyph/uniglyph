@@ -1158,8 +1158,17 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v166 — version history</summary>
+        <summary>v175 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v175</span>Fix out-of-bounds stroke visibility: also set SVG overflow to visible in eraser/select/lasso modes (SVG clips its own viewBox content by default)</div>
+          <div class="vh-item"><span class="vh-tag">v174</span>Add missing version history entries v167–v173 to version history widget so SW detects HTML changes on each push</div>
+          <div class="vh-item"><span class="vh-tag">v173</span>Fix SW update propagation: network-first fetch strategy for HTML navigation requests so index.html is always fresh from the network</div>
+          <div class="vh-item"><span class="vh-tag">v172</span>Auto-unregister stale SW registrations from wrong scopes on page load; prevents duplicate SW conflict across devices</div>
+          <div class="vh-item"><span class="vh-tag">v171</span>Remove dim overlay; out-of-bounds strokes now simply appear in eraser/select/lasso modes with no surrounding shadow</div>
+          <div class="vh-item"><span class="vh-tag">v170</span>Canvas overflow reveal: switching to Eraser, Move, or Lasso removes canvas clip and dims surrounding area so out-of-bounds strokes are visible and reachable</div>
+          <div class="vh-item"><span class="vh-tag">v169</span>Recolor selected paths: tapping a color swatch while in Move mode with a selection recolors all selected paths; color tray stays open on mobile during selection</div>
+          <div class="vh-item"><span class="vh-tag">v168</span>Area-grab for Move mode: tap anywhere within the selection bounding box (+ 30px padding) to start dragging the group</div>
+          <div class="vh-item"><span class="vh-tag">v167</span>Lasso multi-select: dedicated button below Move; freehand dashed lasso; ray-casting point-in-polygon test; auto-switches to Move after selection; multi-path move and bake</div>
           <div class="vh-item"><span class="vh-tag">v166</span>Individual path selection: tap to select (blue halo highlight), drag to move, tap empty space to deselect; bakes offset on release; undo/redo supported</div>
           <div class="vh-item"><span class="vh-tag">v165</span>Fix artifact on curved self-intersecting strokes: replace greedy direction-reversal while loop with single-point check at 135° threshold</div>
           <div class="vh-item"><span class="vh-tag">v164</span>Return key in name modal now only dismisses keyboard; session creation requires explicit tap of Create button</div>
@@ -2079,8 +2088,10 @@ function setMode(m) {
   else if (m === 'eraser') svg.style.cursor = 'none';
   else svg.style.cursor = isSpaceDown ? 'grab' : 'crosshair';
   if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
-  // Show out-of-bounds strokes and dim surrounding area in non-draw modes
-  canvasFrame.classList.toggle('overflow-mode', m === 'eraser' || m === 'select' || m === 'lasso');
+  // Show out-of-bounds strokes in non-draw modes by removing both the CSS and SVG clips
+  const overflowMode = m === 'eraser' || m === 'select' || m === 'lasso';
+  canvasFrame.classList.toggle('overflow-mode', overflowMode);
+  svg.style.overflow = overflowMode ? 'visible' : 'hidden';
 }
 
 document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tool)));
