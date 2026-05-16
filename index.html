@@ -351,6 +351,13 @@
       color: var(--ink-muted); margin-bottom: 18px; text-align: center;
     }
 
+    /* Canvas color swatch */
+    .canvas-color-swatch input[type=color] {
+      position: absolute; inset: -4px;
+      width: calc(100% + 8px); height: calc(100% + 8px);
+      opacity: 0; cursor: pointer;
+    }
+
     /* Color tray */
     .color-grid {
       display: grid; grid-template-columns: repeat(5, 1fr);
@@ -977,6 +984,11 @@
   </div>
   <div class="sidebar-section">
     <div class="sec-label">Canvas</div>
+    <div style="padding: 4px 12px 8px;">
+      <div class="swatch canvas-color-swatch" id="canvasColorSwatch" style="background:#ffffff;border:2px solid var(--border);overflow:hidden" title="Canvas color">
+        <input type="color" id="colorPickerCanvas" value="#ffffff">
+      </div>
+    </div>
     <div id="canvasSizeLabel" style="padding: 8px 12px;">
       <div style="font-size: 11px; color: #1c1917; font-weight: 400;">Not set</div>
       <div style="font-size: 11px; color: #78716c; margin-top: 2px; font-weight: 400;">-</div>
@@ -989,6 +1001,7 @@
   </div>
   <div class="sidebar-section">
     <button class="action-btn export-btn" id="exportTablet">Export<br>Layers<br>.zip</button>
+    <button class="action-btn export-btn" id="exportLottieTablet" style="margin-top:6px">Export<br>Lottie<br>.json</button>
   </div>
 </aside>
 
@@ -1123,6 +1136,10 @@
       <span class="btn-title">Export Layers .zip</span>
       <span class="btn-sub">Download SVG layers</span>
     </button>
+<button class="more-btn export-style full-row" id="mb-export-lottie-btn">
+      <span class="btn-title">Export Lottie .json</span>
+      <span class="btn-sub">Animated drawing file</span>
+    </button>
   </div>
 </div>
 
@@ -1164,8 +1181,13 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v181 — version history</summary>
+        <summary>v186 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v186</span>Lottie JSON export: per-stroke trim path animation with real timestamps; SVG path to bezier conversion; background color layer; Export Lottie button on desktop and mobile</div>
+          <div class="vh-item"><span class="vh-tag">v185</span>Fix thumbnail: use in-memory canvasColor for current session so it updates immediately; background fills full thumbnail via oversized rect</div>
+          <div class="vh-item"><span class="vh-tag">v184</span>Fix canvas color swatch: hide native color input with absolute positioning so only the circle shows</div>
+          <div class="vh-item"><span class="vh-tag">v183</span>Canvas color swatch: show circle only, no label</div>
+          <div class="vh-item"><span class="vh-tag">v182</span>Canvas background color: single color swatch in Canvas sidebar section; saved per session; reflected in thumbnails</div>
           <div class="vh-item"><span class="vh-tag">v181</span>Mobile toolbar horizontal scroll: overflow-x auto with hidden scrollbar so all tool buttons are reachable; flex-shrink: 0 prevents button compression</div>
           <div class="vh-item"><span class="vh-tag">v180</span>Delete selected paths: pressing Erase while paths are selected removes them with undo support instead of switching to eraser mode</div>
           <div class="vh-item"><span class="vh-tag">v179</span>Corner smoothing: replace Chaikin point insertion with centroid control point in smoothPoints — sharp corners (>45°) use prev/curr/next centroid as bezier control, rounding peak without adding points or causing flip artifacts</div>
@@ -1301,6 +1323,7 @@ const toast        = document.getElementById('toast');
 // ── State ──
 let isDrawing = false, mode = 'draw';
 let currentColor = '#1c1917', currentSize = 8;
+let canvasColor = '#ffffff';
 let brushSize = parseInt(localStorage.getItem('uniglyph_brushSize')) || 8;  // Remember last brush size
 let eraserSize = parseInt(localStorage.getItem('uniglyph_eraserSize')) || 20; // Remember last eraser size
 // Initialize currentSize based on mode
@@ -1312,6 +1335,7 @@ const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
 const SAMPLE_DISTANCE = 2; // Minimum distance (px) between points for drawing optimization
 let currentPath = null, points = [], strokes = [];
+let strokeStartTime = 0;
 // ── Content move state (legacy — kept for session migration) ──
 let contentTX = 0, contentTY = 0;
 let isMovingContent = false, moveStartClientX = 0, moveStartClientY = 0, movePrevTX = 0, movePrevTY = 0;
@@ -1682,6 +1706,7 @@ function startStroke(e) {
     // Save state before starting new stroke
     saveToUndoStack();
     
+    strokeStartTime = Date.now();
     currentPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     currentPath.setAttribute('fill', 'none');
     currentPath.setAttribute('stroke', currentColor);
@@ -1827,6 +1852,8 @@ function endStroke(e) {
     if (points.length >= 2) currentPath.setAttribute('d', smoothPoints(points));
     // Only save strokes with at least 2 points (prevents accidental tap dots)
     if (points.length >= 2) {
+      currentPath.dataset.t0 = strokeStartTime;
+      currentPath.dataset.t1 = Date.now();
       strokes.push(currentPath);
       scheduleAutoSave();
     } else {
@@ -2149,6 +2176,19 @@ document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.addEventListene
 document.querySelectorAll('.mb-btn[data-tool]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tool)));
 
 // ── Color ──
+function setCanvasColor(c) {
+  canvasColor = c;
+  canvasFrame.style.background = c;
+  const swatch = document.getElementById('canvasColorSwatch');
+  if (swatch) {
+    swatch.style.background = c;
+    swatch.style.borderColor = c === '#ffffff' ? 'var(--border)' : c;
+  }
+  const picker = document.getElementById('colorPickerCanvas');
+  if (picker) picker.value = c;
+  scheduleAutoSave();
+}
+
 function setColor(c) {
   currentColor = c;
   const dot = document.getElementById('mb-color-dot');
@@ -2159,12 +2199,9 @@ function setColor(c) {
     saveToUndoStack();
     for (const path of selectedPaths) {
       path.setAttribute('stroke', c);
-      const h = selHighlights.get(path);
-      // Keep highlight d in sync (color stays blue, no change needed)
-      // But update the highlight stroke-width in case path stroke-width differs — no-op here
     }
     scheduleAutoSave();
-    return; // don't switch away from select mode
+    return;
   }
   if (mode === 'eraser') setMode('draw');
 }
@@ -2186,8 +2223,11 @@ document.getElementById('colorPickerTablet').addEventListener('input', e => {
 document.getElementById('colorPickerMobile').addEventListener('input', e => {
   document.querySelectorAll('.swatch[data-color]').forEach(x => x.classList.remove('active'));
   setColor(e.target.value);
-  // Keep tray open when paths are selected so user can keep adjusting
   if (!(mode === 'select' && selectedPaths.size > 0)) closeTray();
+});
+
+document.getElementById('colorPickerCanvas').addEventListener('input', e => {
+  setCanvasColor(e.target.value);
 });
 
 // ── Sliders ──
@@ -2321,6 +2361,134 @@ function doClear() {
     });
   }
 }
+
+// ── Lottie Export ──
+function svgPathToLottieBezier(d) {
+  const numRe = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
+  const cmds = d.trim().match(/[MLQ][^MLQ]*/gi) || [];
+  const verts = [], inTan = [], outTan = [];
+  let cx = 0, cy = 0;
+  for (const cmd of cmds) {
+    const type = cmd[0].toUpperCase();
+    const vals = (cmd.slice(1).match(numRe) || []).map(Number);
+    if (type === 'M') {
+      cx = vals[0]; cy = vals[1];
+      verts.push([cx, cy]); inTan.push([0,0]); outTan.push([0,0]);
+    } else if (type === 'L') {
+      const x = vals[0], y = vals[1];
+      verts.push([x, y]); inTan.push([0,0]); outTan.push([0,0]);
+      cx = x; cy = y;
+    } else if (type === 'Q') {
+      const qx = vals[0], qy = vals[1], x = vals[2], y = vals[3];
+      const last = verts.length - 1;
+      outTan[last] = [(2/3)*(qx-cx), (2/3)*(qy-cy)];
+      verts.push([x, y]);
+      inTan.push([(2/3)*(qx-x), (2/3)*(qy-y)]);
+      outTan.push([0,0]);
+      cx = x; cy = y;
+    }
+  }
+  return { c: false, v: verts, i: inTan, o: outTan };
+}
+
+async function doExportLottie() {
+  if (!strokes.length) { showToast('Nothing to export'); return; }
+  if (!canvasConfig) { showToast('No canvas size set'); return; }
+
+  const FR = 60;
+  const vbW = Math.round(canvasConfig.w * DPI);
+  const vbH = Math.round(canvasConfig.h * DPI);
+  const strokeData = serializeCanvas();
+
+  // Determine timing
+  const timed = strokeData.filter(s => s.t0 !== undefined);
+  let sessionT0, totalMs;
+  if (timed.length) {
+    sessionT0 = Math.min(...timed.map(s => s.t0));
+    totalMs   = Math.max(...timed.map(s => s.t1 || s.t0 + 200)) - sessionT0;
+  } else {
+    sessionT0 = 0;
+    totalMs   = strokeData.length * 400;
+  }
+  const holdFrames = Math.round(FR * 0.8);
+  const totalFrames = Math.round(totalMs * FR / 1000) + holdFrames;
+
+  const layers = [];
+
+  strokeData.forEach((sd, idx) => {
+    let sf, ef;
+    if (sd.t0 !== undefined) {
+      sf = Math.round((sd.t0 - sessionT0) * FR / 1000);
+      ef = Math.round(((sd.t1 || sd.t0 + 200) - sessionT0) * FR / 1000);
+    } else {
+      const slot = totalMs / strokeData.length;
+      sf = Math.round(idx * slot * FR / 1000);
+      ef = Math.round((idx + 1) * slot * FR / 1000);
+    }
+    ef = Math.max(ef, sf + 6);
+
+    const hex = sd.stroke.replace('#','');
+    const r = parseInt(hex.slice(0,2),16)/255;
+    const g = parseInt(hex.slice(2,4),16)/255;
+    const b = parseInt(hex.slice(4,6),16)/255;
+    const op = parseFloat(sd.opacity) * 100;
+    const bezier = svgPathToLottieBezier(sd.d);
+
+    layers.push({
+      ddd:0, ind:idx+2, ty:4, nm:`Stroke ${idx+1}`,
+      ip:sf, op:totalFrames, st:0, bm:0,
+      shapes:[{
+        ty:'gr', nm:'Group',
+        it:[
+          { ty:'sh', nm:'Path', ks:{ a:0, k:bezier } },
+          { ty:'st', nm:'Stroke', lc:2, lj:2,
+            c:{ a:0, k:[r,g,b,1] },
+            o:{ a:0, k:op },
+            w:{ a:0, k:parseFloat(sd.width) } },
+          { ty:'tm', nm:'Trim',
+            s:{ a:0, k:0 },
+            e:{ a:1, k:[
+              { t:sf, s:[0],   e:[100], i:{x:[0.4],y:[1]}, o:{x:[0.6],y:[0]} },
+              { t:ef, s:[100], e:[100], i:{x:[0.4],y:[1]}, o:{x:[0.6],y:[0]} }
+            ]},
+            o:{ a:0, k:0 }, m:1 }
+        ]
+      }]
+    });
+  });
+
+  // Background solid layer (bottom)
+  layers.push({
+    ddd:0, ind:strokeData.length+2, ty:1, nm:'Background',
+    sc: canvasColor, sh:vbH, sw:vbW,
+    ip:0, op:totalFrames, st:0, bm:0
+  });
+
+  const lottie = {
+    v:'5.7.4', fr:FR, ip:0, op:totalFrames,
+    w:vbW, h:vbH, nm:'Uniglyph Export',
+    ddd:0, assets:[], layers
+  };
+
+  let sessionName = 'uniglyph';
+  if (currentSessionId) {
+    const sess = await idbGet(currentSessionId);
+    if (sess && sess.name) {
+      sessionName = sess.name
+        .replace(/[<>:"/\\|?*\s]/g,'-').replace(/-+/g,'-')
+        .replace(/^-|-$/g,'').toLowerCase().substring(0,50) || 'uniglyph';
+    }
+  }
+
+  const blob = new Blob([JSON.stringify(lottie)], { type:'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `${sessionName}-lottie.json`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast(`Lottie exported — ${strokeData.length} stroke${strokeData.length!==1?'s':''}`);
+}
+
 async function doExport() {
   const map = getLayerMap(), keys = Object.keys(map);
   if (!keys.length) { showToast('Nothing to export'); return; }
@@ -2408,6 +2576,8 @@ document.getElementById('exportTablet').addEventListener('click', doExport);
 document.getElementById('mb-undo-btn').addEventListener('click', doUndo);
 document.getElementById('mb-clear-btn').addEventListener('click', () => { doClear(); closeTray(); });
 document.getElementById('mb-export-btn').addEventListener('click', () => { doExport(); closeTray(); });
+document.getElementById('exportLottieTablet').addEventListener('click', doExportLottie);
+document.getElementById('mb-export-lottie-btn').addEventListener('click', () => { doExportLottie(); closeTray(); });
 
 // ── Layer UI ──
 function getLayerMap() {
@@ -2563,7 +2733,9 @@ function serializeCanvas() {
     d:       s.getAttribute('d'),
     stroke:  s.getAttribute('stroke'),
     width:   s.getAttribute('stroke-width'),
-    opacity: s.getAttribute('opacity') || '1'
+    opacity: s.getAttribute('opacity') || '1',
+    t0:      s.dataset.t0 ? parseInt(s.dataset.t0) : undefined,
+    t1:      s.dataset.t1 ? parseInt(s.dataset.t1) : undefined
   }));
 }
 
@@ -2579,13 +2751,15 @@ function deserializeCanvas(data) {
     p.setAttribute('stroke-linejoin', 'round');
     p.setAttribute('opacity', sd.opacity);
     p.setAttribute('d', sd.d);
+    if (sd.t0) p.dataset.t0 = sd.t0;
+    if (sd.t1) p.dataset.t1 = sd.t1;
     strokeLayer.appendChild(p);
     strokes.push(p);
   });
   updateUI();
 }
 
-function makeThumbnail(strokeData) {
+function makeThumbnail(strokeData, bgColor) {
   if (!strokeData || !strokeData.length) return null;
   const size = 160;
   // get bounding box of all paths
@@ -2615,7 +2789,9 @@ function makeThumbnail(strokeData) {
   const pathsHTML = strokeData.map(sd =>
     `<path d="${sd.d.replace(/"/g,'&quot;')}" stroke="${sd.stroke}" stroke-width="${sd.width}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${sd.opacity}"/>`
   ).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX-pad} ${minY-pad} ${vw} ${vh}" width="${size}" height="${size}">${pathsHTML}</svg>`;
+  const bg = bgColor || '#ffffff';
+  const bgRect = `<rect x="${minX-pad-9999}" y="${minY-pad-9999}" width="${vw+19998}" height="${vh+19998}" fill="${bg}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX-pad} ${minY-pad} ${vw} ${vh}" width="${size}" height="${size}" style="background:${bg}">${bgRect}${pathsHTML}</svg>`;
 }
 
 async function renderSessionScreen() {
@@ -2645,7 +2821,8 @@ async function renderSessionScreen() {
       thumbDiv.className = 'ss-thumb ss-thumb-clickable';
       thumbDiv.dataset.id = sess.id;
       
-      const thumb = makeThumbnail(sess.strokes);
+      const thumbBg = (sess.id === currentSessionId) ? canvasColor : (sess.canvasColor || '#ffffff');
+      const thumb = makeThumbnail(sess.strokes, thumbBg);
       if (thumb) {
         thumbDiv.innerHTML = thumb;
       } else {
@@ -2724,6 +2901,7 @@ async function openSession(id) {
   applyCanvasSize(config);
 
   deserializeCanvas(sess.strokes);
+  setCanvasColor(sess.canvasColor || '#ffffff');
   // Migrate legacy contentOffset: bake into path coordinates and discard
   const legacyTX = sess.contentOffset ? sess.contentOffset.x : 0;
   const legacyTY = sess.contentOffset ? sess.contentOffset.y : 0;
@@ -2764,6 +2942,7 @@ async function doSaveSession(name) {
       sess.name = name;
       sess.strokes = serializeCanvas();
       sess.canvasConfig = canvasConfig;
+      sess.canvasColor = canvasColor;
       sess.updatedAt = Date.now();
       await idbPut(sess);
     } else {
@@ -2778,6 +2957,7 @@ async function doSaveSession(name) {
       name,
       strokes: serializeCanvas(),
       canvasConfig: canvasConfig,
+      canvasColor: canvasColor,
       createdAt: Date.now(),
       updatedAt: Date.now()
     });
@@ -2796,6 +2976,7 @@ function scheduleAutoSave() {
     const sess = await idbGet(savedId);
     if (!sess) return;
     sess.strokes = serializeCanvas();
+    sess.canvasColor = canvasColor;
     sess.updatedAt = Date.now();
     await idbPut(sess);
     showAutoSaveBadge();
