@@ -1158,8 +1158,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v175 — version history</summary>
+        <summary>v176 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v176</span>Restrict drawing to canvas bounds: startStroke ignores touches outside canvas; continueStroke skips out-of-bounds points; eraser/select/lasso unrestricted</div>
           <div class="vh-item"><span class="vh-tag">v175</span>Fix out-of-bounds stroke visibility: also set SVG overflow to visible in eraser/select/lasso modes (SVG clips its own viewBox content by default)</div>
           <div class="vh-item"><span class="vh-tag">v174</span>Add missing version history entries v167–v173 to version history widget so SW detects HTML changes on each push</div>
           <div class="vh-item"><span class="vh-tag">v173</span>Fix SW update propagation: network-first fetch strategy for HTML navigation requests so index.html is always fresh from the network</div>
@@ -1560,6 +1561,12 @@ function getPos(e) {
   return { x: viewBoxX, y: viewBoxY };
 }
 
+// Returns true if the viewBox coordinate is within the canvas bounds.
+function inCanvasBounds(pos) {
+  const vb = svg.viewBox.baseVal;
+  return pos.x >= 0 && pos.x <= vb.width && pos.y >= 0 && pos.y <= vb.height;
+}
+
 function smoothPoints(pts) {
   if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`;
   // 2-point case: plain line segment with round caps at both ends
@@ -1638,8 +1645,10 @@ function startStroke(e) {
     }
     return;
   }
-  isDrawing = true;
   const pos = getPos(e);
+  // Don't start a draw stroke outside the canvas boundary
+  if (mode === 'draw' && !inCanvasBounds(pos)) return;
+  isDrawing = true;
   points = [pos];
   if (mode === 'draw') {
     // Save state before starting new stroke
@@ -1709,6 +1718,8 @@ function continueStroke(e) {
     }
   } else {
     // Distance-based sampling: only add point if it's >SAMPLE_DISTANCE from last point
+    // and within the canvas bounds (prevents strokes from extending outside the canvas)
+    if (!inCanvasBounds(pos)) return;
     if (points.length === 0) {
       points.push(pos);
     } else {
