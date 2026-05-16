@@ -1158,8 +1158,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v176 — version history</summary>
+        <summary>v177 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v177</span>Chaikin corner-cutting: apply 2-iteration corner smoothing on stroke lift to eliminate sharp corners at direction reversals (e.g. letter m peaks)</div>
           <div class="vh-item"><span class="vh-tag">v176</span>Restrict drawing to canvas bounds: startStroke ignores touches outside canvas; continueStroke skips out-of-bounds points; eraser/select/lasso unrestricted</div>
           <div class="vh-item"><span class="vh-tag">v175</span>Fix out-of-bounds stroke visibility: also set SVG overflow to visible in eraser/select/lasso modes (SVG clips its own viewBox content by default)</div>
           <div class="vh-item"><span class="vh-tag">v174</span>Add missing version history entries v167–v173 to version history widget so SW detects HTML changes on each push</div>
@@ -1567,6 +1568,24 @@ function inCanvasBounds(pos) {
   return pos.x >= 0 && pos.x <= vb.width && pos.y >= 0 && pos.y <= vb.height;
 }
 
+// Chaikin corner-cutting: each iteration replaces every segment with two points
+// at 25% and 75%, rounding sharp corners while preserving overall stroke shape.
+// Endpoints are kept fixed so the stroke doesn't shrink.
+function chaikin(pts, iterations = 2) {
+  let result = pts;
+  for (let iter = 0; iter < iterations; iter++) {
+    const next = [result[0]];
+    for (let i = 0; i < result.length - 1; i++) {
+      const p0 = result[i], p1 = result[i + 1];
+      next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
+      next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
+    }
+    next.push(result[result.length - 1]);
+    result = next;
+  }
+  return result;
+}
+
 function smoothPoints(pts) {
   if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`;
   // 2-point case: plain line segment with round caps at both ends
@@ -1796,7 +1815,12 @@ function endStroke(e) {
         points.pop();
       }
     }
-    if (points.length >= 2) currentPath.setAttribute('d', smoothPoints(points));
+    // Apply Chaikin corner-cutting on lift to round sharp intersecting corners,
+    // then run the bezier smoother on the refined point set.
+    if (points.length >= 2) {
+      const refined = points.length >= 3 ? chaikin(points, 2) : points;
+      currentPath.setAttribute('d', smoothPoints(refined));
+    }
     // Only save strokes with at least 2 points (prevents accidental tap dots)
     if (points.length >= 2) {
       strokes.push(currentPath);
