@@ -1158,8 +1158,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v177 — version history</summary>
+        <summary>v178 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v178</span>Corner-only Chaikin: detect sharp direction changes (>45°) and apply Chaikin subdivision only in those regions; smooth runs untouched, keeping point counts low</div>
           <div class="vh-item"><span class="vh-tag">v177</span>Chaikin corner-cutting: apply 2-iteration corner smoothing on stroke lift to eliminate sharp corners at direction reversals (e.g. letter m peaks)</div>
           <div class="vh-item"><span class="vh-tag">v176</span>Restrict drawing to canvas bounds: startStroke ignores touches outside canvas; continueStroke skips out-of-bounds points; eraser/select/lasso unrestricted</div>
           <div class="vh-item"><span class="vh-tag">v175</span>Fix out-of-bounds stroke visibility: also set SVG overflow to visible in eraser/select/lasso modes (SVG clips its own viewBox content by default)</div>
@@ -1568,9 +1569,7 @@ function inCanvasBounds(pos) {
   return pos.x >= 0 && pos.x <= vb.width && pos.y >= 0 && pos.y <= vb.height;
 }
 
-// Chaikin corner-cutting: each iteration replaces every segment with two points
-// at 25% and 75%, rounding sharp corners while preserving overall stroke shape.
-// Endpoints are kept fixed so the stroke doesn't shrink.
+// Chaikin subdivision on a small point array (internal helper).
 function chaikin(pts, iterations = 2) {
   let result = pts;
   for (let iter = 0; iter < iterations; iter++) {
@@ -1582,6 +1581,53 @@ function chaikin(pts, iterations = 2) {
     }
     next.push(result[result.length - 1]);
     result = next;
+  }
+  return result;
+}
+
+// Apply Chaikin only around detected corners, leaving smooth runs untouched.
+// angleThreshold: direction change in degrees that counts as a corner.
+// windowSize: how many points either side of the corner get smoothed.
+function chaikinAtCorners(pts, angleThreshold = 45, windowSize = 3, iterations = 2) {
+  if (pts.length < 3) return pts;
+  const cosThreshold = Math.cos(angleThreshold * Math.PI / 180);
+
+  // Mark which indices fall inside a corner zone
+  const inZone = new Uint8Array(pts.length);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const ax = pts[i].x - pts[i-1].x, ay = pts[i].y - pts[i-1].y;
+    const bx = pts[i+1].x - pts[i].x, by = pts[i+1].y - pts[i].y;
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+    if (la > 0 && lb > 0 && (ax*bx + ay*by) / (la * lb) < cosThreshold) {
+      for (let w = Math.max(0, i - windowSize); w <= Math.min(pts.length - 1, i + windowSize); w++) {
+        inZone[w] = 1;
+      }
+    }
+  }
+
+  // Walk the array: copy non-corner points as-is, smooth corner runs with Chaikin
+  const result = [];
+  let i = 0;
+  while (i < pts.length) {
+    if (!inZone[i]) {
+      result.push(pts[i++]);
+    } else {
+      // Find the end of this contiguous corner run
+      const runStart = i;
+      while (i < pts.length && inZone[i]) i++;
+      const runEnd = i - 1;
+
+      // Include one anchor point either side so the smoothed segment blends in
+      const sliceStart = Math.max(0, runStart - 1);
+      const sliceEnd   = Math.min(pts.length - 1, runEnd + 1);
+      const smoothed   = chaikin(pts.slice(sliceStart, sliceEnd + 1), iterations);
+
+      // Skip the leading anchor if it was already pushed as a non-corner point
+      const from = sliceStart < runStart ? 1 : 0;
+      // Skip the trailing anchor — it will be handled by the next iteration
+      const to   = sliceEnd > runEnd ? smoothed.length - 1 : smoothed.length;
+      for (let k = from; k < to; k++) result.push(smoothed[k]);
+    }
   }
   return result;
 }
@@ -1815,10 +1861,10 @@ function endStroke(e) {
         points.pop();
       }
     }
-    // Apply Chaikin corner-cutting on lift to round sharp intersecting corners,
-    // then run the bezier smoother on the refined point set.
+    // On lift: smooth only corner regions with Chaikin, then run bezier smoother.
+    // Straight and gently curved runs are untouched, keeping point counts low.
     if (points.length >= 2) {
-      const refined = points.length >= 3 ? chaikin(points, 2) : points;
+      const refined = points.length >= 3 ? chaikinAtCorners(points) : points;
       currentPath.setAttribute('d', smoothPoints(refined));
     }
     // Only save strokes with at least 2 points (prevents accidental tap dots)
