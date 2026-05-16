@@ -272,10 +272,16 @@
       position: fixed; bottom: 0; left: 0; right: 0;
       height: calc(68px + env(safe-area-inset-bottom));
       background: var(--paper-warm); border-top: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-around;
+      display: flex; align-items: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
       padding: 0 4px; padding-bottom: env(safe-area-inset-bottom);
       z-index: 9999; touch-action: manipulation;
+      scrollbar-width: none; /* Firefox */
     }
+    #mobile-toolbar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
     @media (min-width: 600px) { #mobile-toolbar { display: none; } }
     @media (min-width: 600px) { .tray, .tray-backdrop { display: none !important; } }
 
@@ -286,7 +292,7 @@
 
     .mb-btn {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 4px; min-width: 52px; height: 56px;
+      gap: 4px; min-width: 56px; height: 56px; flex-shrink: 0;
       border: none; background: transparent; cursor: pointer;
       font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.04em;
       color: var(--ink-muted); transition: color 0.12s;
@@ -1158,8 +1164,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v180 — version history</summary>
+        <summary>v181 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v181</span>Mobile toolbar horizontal scroll: overflow-x auto with hidden scrollbar so all tool buttons are reachable; flex-shrink: 0 prevents button compression</div>
           <div class="vh-item"><span class="vh-tag">v180</span>Delete selected paths: pressing Erase while paths are selected removes them with undo support instead of switching to eraser mode</div>
           <div class="vh-item"><span class="vh-tag">v179</span>Corner smoothing: replace Chaikin point insertion with centroid control point in smoothPoints — sharp corners (>45°) use prev/curr/next centroid as bezier control, rounding peak without adding points or causing flip artifacts</div>
           <div class="vh-item"><span class="vh-tag">v178</span>Corner-only Chaikin: detect sharp direction changes (>45°) and apply Chaikin subdivision only in those regions; smooth runs untouched, keeping point counts low</div>
