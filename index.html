@@ -1158,8 +1158,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v179 — version history</summary>
+        <summary>v180 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v180</span>Delete selected paths: pressing Erase while paths are selected removes them with undo support instead of switching to eraser mode</div>
           <div class="vh-item"><span class="vh-tag">v179</span>Corner smoothing: replace Chaikin point insertion with centroid control point in smoothPoints — sharp corners (>45°) use prev/curr/next centroid as bezier control, rounding peak without adding points or causing flip artifacts</div>
           <div class="vh-item"><span class="vh-tag">v178</span>Corner-only Chaikin: detect sharp direction changes (>45°) and apply Chaikin subdivision only in those regions; smooth runs untouched, keeping point counts low</div>
           <div class="vh-item"><span class="vh-tag">v177</span>Chaikin corner-cutting: apply 2-iteration corner smoothing on stroke lift to eliminate sharp corners at direction reversals (e.g. letter m peaks)</div>
@@ -2094,6 +2095,18 @@ svg.addEventListener('mousemove', e => {
 
 // ── Mode ──
 function setMode(m) {
+  // Erase button while paths are selected → delete selection instead of switching mode
+  if (m === 'eraser' && selectedPaths.size > 0) {
+    saveToUndoStack();
+    for (const path of selectedPaths) {
+      path.remove();
+      strokes = strokes.filter(s => s !== path);
+    }
+    clearSelection();
+    scheduleAutoSave();
+    updateUI();
+    return;
+  }
   if (mode === 'select' || mode === 'lasso') clearSelection(); // clean up any active selection
   // Save current size before switching modes
   if (mode === 'draw') {
