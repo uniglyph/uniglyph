@@ -133,6 +133,10 @@
       display: none; z-index: 5;
       overflow: hidden;
     }
+    /* Eraser / Move / Lasso: reveal out-of-bounds strokes */
+    #canvasFrame.overflow-mode {
+      overflow: visible;
+    }
 
     /* ══════════════════════════════
        TABLET SIDEBAR (>= 600px)
@@ -2067,6 +2071,8 @@ function setMode(m) {
   else if (m === 'eraser') svg.style.cursor = 'none';
   else svg.style.cursor = isSpaceDown ? 'grab' : 'crosshair';
   if (m !== 'eraser') eraserCursor.setAttribute('display', 'none');
+  // Show out-of-bounds strokes and dim surrounding area in non-draw modes
+  canvasFrame.classList.toggle('overflow-mode', m === 'eraser' || m === 'select' || m === 'lasso');
 }
 
 document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tool)));
