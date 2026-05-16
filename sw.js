@@ -1,4 +1,4 @@
-const CACHE = 'uniglyph-v178';
+const CACHE = 'uniglyph-v179';
 const ASSETS = [
   '/uniglyph/',
   '/uniglyph/index.html',

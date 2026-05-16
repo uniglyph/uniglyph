@@ -1158,8 +1158,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v178 — version history</summary>
+        <summary>v179 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v179</span>Corner smoothing: replace Chaikin point insertion with centroid control point in smoothPoints — sharp corners (>45°) use prev/curr/next centroid as bezier control, rounding peak without adding points or causing flip artifacts</div>
           <div class="vh-item"><span class="vh-tag">v178</span>Corner-only Chaikin: detect sharp direction changes (>45°) and apply Chaikin subdivision only in those regions; smooth runs untouched, keeping point counts low</div>
           <div class="vh-item"><span class="vh-tag">v177</span>Chaikin corner-cutting: apply 2-iteration corner smoothing on stroke lift to eliminate sharp corners at direction reversals (e.g. letter m peaks)</div>
           <div class="vh-item"><span class="vh-tag">v176</span>Restrict drawing to canvas bounds: startStroke ignores touches outside canvas; continueStroke skips out-of-bounds points; eraser/select/lasso unrestricted</div>
@@ -1569,68 +1570,11 @@ function inCanvasBounds(pos) {
   return pos.x >= 0 && pos.x <= vb.width && pos.y >= 0 && pos.y <= vb.height;
 }
 
-// Chaikin subdivision on a small point array (internal helper).
-function chaikin(pts, iterations = 2) {
-  let result = pts;
-  for (let iter = 0; iter < iterations; iter++) {
-    const next = [result[0]];
-    for (let i = 0; i < result.length - 1; i++) {
-      const p0 = result[i], p1 = result[i + 1];
-      next.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
-      next.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
-    }
-    next.push(result[result.length - 1]);
-    result = next;
-  }
-  return result;
-}
 
-// Apply Chaikin only around detected corners, leaving smooth runs untouched.
-// angleThreshold: direction change in degrees that counts as a corner.
-// windowSize: how many points either side of the corner get smoothed.
-function chaikinAtCorners(pts, angleThreshold = 45, windowSize = 3, iterations = 2) {
-  if (pts.length < 3) return pts;
-  const cosThreshold = Math.cos(angleThreshold * Math.PI / 180);
-
-  // Mark which indices fall inside a corner zone
-  const inZone = new Uint8Array(pts.length);
-  for (let i = 1; i < pts.length - 1; i++) {
-    const ax = pts[i].x - pts[i-1].x, ay = pts[i].y - pts[i-1].y;
-    const bx = pts[i+1].x - pts[i].x, by = pts[i+1].y - pts[i].y;
-    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
-    if (la > 0 && lb > 0 && (ax*bx + ay*by) / (la * lb) < cosThreshold) {
-      for (let w = Math.max(0, i - windowSize); w <= Math.min(pts.length - 1, i + windowSize); w++) {
-        inZone[w] = 1;
-      }
-    }
-  }
-
-  // Walk the array: copy non-corner points as-is, smooth corner runs with Chaikin
-  const result = [];
-  let i = 0;
-  while (i < pts.length) {
-    if (!inZone[i]) {
-      result.push(pts[i++]);
-    } else {
-      // Find the end of this contiguous corner run
-      const runStart = i;
-      while (i < pts.length && inZone[i]) i++;
-      const runEnd = i - 1;
-
-      // Include one anchor point either side so the smoothed segment blends in
-      const sliceStart = Math.max(0, runStart - 1);
-      const sliceEnd   = Math.min(pts.length - 1, runEnd + 1);
-      const smoothed   = chaikin(pts.slice(sliceStart, sliceEnd + 1), iterations);
-
-      // Skip the leading anchor if it was already pushed as a non-corner point
-      const from = sliceStart < runStart ? 1 : 0;
-      // Skip the trailing anchor — it will be handled by the next iteration
-      const to   = sliceEnd > runEnd ? smoothed.length - 1 : smoothed.length;
-      for (let k = from; k < to; k++) result.push(smoothed[k]);
-    }
-  }
-  return result;
-}
+// Corner threshold: direction changes greater than 45° get their bezier
+// control point replaced with the centroid of the surrounding three points,
+// pulling the sharp peak inward and rounding it without adding extra points.
+const CORNER_COS_THRESHOLD = Math.cos(45 * Math.PI / 180);
 
 function smoothPoints(pts) {
   if (pts.length < 2) return `M ${pts[0].x} ${pts[0].y}`;
@@ -1639,10 +1583,21 @@ function smoothPoints(pts) {
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 1; i < pts.length - 1; i++) {
     const mx = (pts[i].x + pts[i+1].x) / 2, my = (pts[i].y + pts[i+1].y) / 2;
-    d += ` Q ${pts[i].x} ${pts[i].y} ${mx} ${my}`;
+    // Detect corner: angle between incoming and outgoing segment > 45°
+    const ax = pts[i].x - pts[i-1].x, ay = pts[i].y - pts[i-1].y;
+    const bx = pts[i+1].x - pts[i].x, by = pts[i+1].y - pts[i].y;
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+    const isCorner = la > 0 && lb > 0 && (ax*bx + ay*by) / (la * lb) < CORNER_COS_THRESHOLD;
+    if (isCorner) {
+      // Use centroid of prev/curr/next as control point — pulls peak inward
+      const cx = (pts[i-1].x + pts[i].x + pts[i+1].x) / 3;
+      const cy = (pts[i-1].y + pts[i].y + pts[i+1].y) / 3;
+      d += ` Q ${cx} ${cy} ${mx} ${my}`;
+    } else {
+      d += ` Q ${pts[i].x} ${pts[i].y} ${mx} ${my}`;
+    }
   }
-  // End at the last Q midpoint — avoids the straight L segment that caused
-  // flat-end artifacts and the crossed-endpoint kink near stroke lift-off.
+  // End at the last Q midpoint — avoids flat-end and crossed-endpoint artifacts
   return d;
 }
 
@@ -1861,12 +1816,7 @@ function endStroke(e) {
         points.pop();
       }
     }
-    // On lift: smooth only corner regions with Chaikin, then run bezier smoother.
-    // Straight and gently curved runs are untouched, keeping point counts low.
-    if (points.length >= 2) {
-      const refined = points.length >= 3 ? chaikinAtCorners(points) : points;
-      currentPath.setAttribute('d', smoothPoints(refined));
-    }
+    if (points.length >= 2) currentPath.setAttribute('d', smoothPoints(points));
     // Only save strokes with at least 2 points (prevents accidental tap dots)
     if (points.length >= 2) {
       strokes.push(currentPath);
