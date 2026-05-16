@@ -1,4 +1,4 @@
-const CACHE = 'uniglyph-v172';
+const CACHE = 'uniglyph-v173';
 const ASSETS = [
   '/uniglyph/',
   '/uniglyph/index.html',
@@ -25,8 +25,16 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch: serve from cache, fall back to network
+// Fetch: network-first for HTML navigation (so index.html is always fresh),
+// cache-first for all other assets.
 self.addEventListener('fetch', e => {
+  if (e.request.mode === 'navigate') {
+    // Always fetch index.html from network; fall back to cache if offline
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
