@@ -1185,8 +1185,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v188 — version history</summary>
+        <summary>v189 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v189</span>Lottie export: chain strokes back-to-back with no gaps; keep per-stroke draw duration for natural feel</div>
           <div class="vh-item"><span class="vh-tag">v188</span>Fix mobile canvas color button: embed color input directly inside label so iOS tap hits input natively; no programmatic click needed</div>
           <div class="vh-item"><span class="vh-tag">v187</span>Mobile canvas color: Canvas button in more tray opens iOS native color picker to set background color</div>
           <div class="vh-item"><span class="vh-tag">v186</span>Lottie JSON export: per-stroke trim path animation with real timestamps; SVG path to bezier conversion; background color layer; Export Lottie button on desktop and mobile</div>
@@ -2406,32 +2407,26 @@ async function doExportLottie() {
   const vbH = Math.round(canvasConfig.h * DPI);
   const strokeData = serializeCanvas();
 
-  // Determine timing
-  const timed = strokeData.filter(s => s.t0 !== undefined);
-  let sessionT0, totalMs;
-  if (timed.length) {
-    sessionT0 = Math.min(...timed.map(s => s.t0));
-    totalMs   = Math.max(...timed.map(s => s.t1 || s.t0 + 200)) - sessionT0;
-  } else {
-    sessionT0 = 0;
-    totalMs   = strokeData.length * 400;
-  }
+  // Build chained timing — each stroke starts when the previous ends, no gaps
+  // Keep each stroke's real draw duration for natural feel
+  const DEFAULT_STROKE_MS = 300;
+  const strokeDurations = strokeData.map(sd => {
+    if (sd.t0 !== undefined && sd.t1 !== undefined) {
+      return Math.max(sd.t1 - sd.t0, 50);
+    }
+    return DEFAULT_STROKE_MS;
+  });
   const holdFrames = Math.round(FR * 0.8);
-  const totalFrames = Math.round(totalMs * FR / 1000) + holdFrames;
+  const totalFrames = Math.round(strokeDurations.reduce((a, b) => a + b, 0) * FR / 1000) + holdFrames;
 
   const layers = [];
+  let cursor = 0; // running frame counter
 
   strokeData.forEach((sd, idx) => {
-    let sf, ef;
-    if (sd.t0 !== undefined) {
-      sf = Math.round((sd.t0 - sessionT0) * FR / 1000);
-      ef = Math.round(((sd.t1 || sd.t0 + 200) - sessionT0) * FR / 1000);
-    } else {
-      const slot = totalMs / strokeData.length;
-      sf = Math.round(idx * slot * FR / 1000);
-      ef = Math.round((idx + 1) * slot * FR / 1000);
-    }
-    ef = Math.max(ef, sf + 6);
+    const durMs = strokeDurations[idx];
+    const sf = cursor;
+    const ef = Math.max(sf + 6, sf + Math.round(durMs * FR / 1000));
+    cursor = ef;
 
     const hex = sd.stroke.replace('#','');
     const r = parseInt(hex.slice(0,2),16)/255;
