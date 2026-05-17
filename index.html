@@ -1128,14 +1128,14 @@
 <div class="tray" id="tray-more">
   <div class="tray-handle"></div>
   <div class="tray-title">Options</div>
-  <input type="color" id="colorPickerCanvasMobile" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none">
   <div class="more-grid">
     <button class="more-btn danger" id="mb-clear-btn">
       <span class="btn-title">Clear</span><span class="btn-sub">All strokes</span>
     </button>
-    <button class="more-btn" id="mb-canvas-color-btn">
+    <label class="more-btn" id="mb-canvas-color-btn" style="position:relative;overflow:hidden;cursor:pointer;">
       <span class="btn-title">Canvas</span><span class="btn-sub">Background color</span>
-    </button>
+      <input type="color" id="colorPickerCanvasMobile" style="position:absolute;inset:-4px;width:calc(100% + 8px);height:calc(100% + 8px);opacity:0;cursor:pointer;">
+    </label>
 <button class="more-btn export-style full-row" id="mb-export-btn">
       <span class="btn-title">Export Layers .zip</span>
       <span class="btn-sub">Download SVG layers</span>
@@ -1185,8 +1185,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v187 — version history</summary>
+        <summary>v188 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v188</span>Fix mobile canvas color button: embed color input directly inside label so iOS tap hits input natively; no programmatic click needed</div>
           <div class="vh-item"><span class="vh-tag">v187</span>Mobile canvas color: Canvas button in more tray opens iOS native color picker to set background color</div>
           <div class="vh-item"><span class="vh-tag">v186</span>Lottie JSON export: per-stroke trim path animation with real timestamps; SVG path to bezier conversion; background color layer; Export Lottie button on desktop and mobile</div>
           <div class="vh-item"><span class="vh-tag">v185</span>Fix thumbnail: use in-memory canvasColor for current session so it updates immediately; background fills full thumbnail via oversized rect</div>
@@ -2580,11 +2581,9 @@ document.getElementById('clearTablet').addEventListener('click', doClear);
 document.getElementById('exportTablet').addEventListener('click', doExport);
 document.getElementById('mb-undo-btn').addEventListener('click', doUndo);
 document.getElementById('mb-clear-btn').addEventListener('click', () => { doClear(); closeTray(); });
-document.getElementById('mb-canvas-color-btn').addEventListener('click', () => {
-  const picker = document.getElementById('colorPickerCanvasMobile');
-  picker.value = canvasColor;
+document.getElementById('colorPickerCanvasMobile').addEventListener('click', () => {
+  document.getElementById('colorPickerCanvasMobile').value = canvasColor;
   closeTray();
-  picker.click();
 });
 document.getElementById('colorPickerCanvasMobile').addEventListener('input', e => {
   setCanvasColor(e.target.value);
