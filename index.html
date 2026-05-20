@@ -211,7 +211,7 @@
     .slider-val { font-size: 11px; font-weight: 500; color: var(--ink); min-width: 32px; text-align: center; }
 
     input[type=range] {
-      -webkit-appearance: none; width: 56px; height: 4px;
+      -webkit-appearance: none; appearance: none; width: 56px; height: 4px;
       border-radius: 2px; background: var(--border); outline: none; cursor: pointer;
     }
     input[type=range]::-webkit-slider-thumb {
@@ -743,7 +743,7 @@
       font-size: 13px; color: var(--ink);
       outline: none; margin-bottom: 16px;
       touch-action: manipulation;
-      -webkit-user-select: text;
+      -webkit-user-select: text; user-select: text;
     }
     .modal input[type=text]:focus { border-color: var(--ink-muted); }
     .modal-btns { display: flex; gap: 8px; }
@@ -1185,8 +1185,10 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v189 — version history</summary>
+        <summary>v191 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v191</span>Fix CSS vendor prefix warnings: add standard appearance and user-select alongside -webkit- prefixes</div>
+          <div class="vh-item"><span class="vh-tag">v190</span>Rotate selected paths: blue handle above selection bbox; drag to rotate around centroid; bakes rotation into path coordinates on release</div>
           <div class="vh-item"><span class="vh-tag">v189</span>Lottie export: chain strokes back-to-back with no gaps; keep per-stroke draw duration for natural feel</div>
           <div class="vh-item"><span class="vh-tag">v188</span>Fix mobile canvas color button: embed color input directly inside label so iOS tap hits input natively; no programmatic click needed</div>
           <div class="vh-item"><span class="vh-tag">v187</span>Mobile canvas color: Canvas button in more tray opens iOS native color picker to set background color</div>
@@ -1355,6 +1357,11 @@ let selTX = 0, selTY = 0;                   // current drag offset (viewBox unit
 let selPrevTX = 0, selPrevTY = 0;           // offset before this drag began
 let selMovedEnough = false;                  // true once drag exceeds tap threshold
 let selInitialBBox = null;                   // combined bbox at drag start (for clamping)
+let isRotating = false;
+let rotateStartAngle = 0;
+let rotateDelta = 0;
+let rotateCX = 0, rotateCY = 0;
+let rotateHandleEl = null, rotateLineEl = null;
 // ── Lasso state ──
 let isLassoing  = false;
 let lassoPoints = [];
@@ -1504,6 +1511,7 @@ function selectPath(path) {
   selectedPaths.add(path);
   _addHighlight(path);
   svg.style.cursor = 'grab';
+  updateRotateHandle();
 }
 
 // Select a Set of paths (clears any previous selection).
@@ -1513,7 +1521,7 @@ function selectPaths(pathSet) {
     selectedPaths.add(path);
     _addHighlight(path);
   }
-  if (selectedPaths.size > 0) svg.style.cursor = 'grab';
+  if (selectedPaths.size > 0) { svg.style.cursor = 'grab'; updateRotateHandle(); }
 }
 
 function clearSelection() {
@@ -1522,6 +1530,9 @@ function clearSelection() {
   for (const h of selHighlights.values()) h.remove();
   selHighlights.clear();
   selTX = 0; selTY = 0; selInitialBBox = null; isMovingSelected = false;
+  isRotating = false; rotateDelta = 0;
+  if (rotateHandleEl) rotateHandleEl.setAttribute('display', 'none');
+  if (rotateLineEl)   rotateLineEl.setAttribute('display', 'none');
   if (mode === 'select' || mode === 'lasso') svg.style.cursor = 'crosshair';
 }
 
@@ -1569,6 +1580,74 @@ function offsetPath(d, tx, ty) {
       `${cmd} ${parseFloat(a) + tx} ${parseFloat(b) + ty}`)
     .replace(/Q\s*([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)/g, (_, a, b, c, f) =>
       `Q ${parseFloat(a) + tx} ${parseFloat(b) + ty} ${parseFloat(c) + tx} ${parseFloat(f) + ty}`);
+}
+
+// ── Rotate path coordinates ──
+function rotatePath(d, angleDeg, cx, cy) {
+  const a = angleDeg * Math.PI / 180;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  const rPt = (x, y) => [
+    cx + (x - cx) * cos - (y - cy) * sin,
+    cy + (x - cx) * sin + (y - cy) * cos
+  ];
+  return d.replace(/([MLQ])([\s\S]*?)(?=[MLQ]|$)/gi, (match, cmd, rest) => {
+    const vals = rest.trim().match(/[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g);
+    if (!vals || vals.length < 2) return match;
+    const nums = vals.map(Number);
+    const out = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const [rx, ry] = rPt(nums[i], nums[i + 1]);
+      out.push(rx.toFixed(3) + ' ' + ry.toFixed(3));
+    }
+    return cmd + ' ' + out.join(' ');
+  });
+}
+
+// ── Rotation handle ──
+function updateRotateHandle() {
+  if (selectedPaths.size === 0 || mode !== 'select') {
+    if (rotateHandleEl) rotateHandleEl.setAttribute('display', 'none');
+    if (rotateLineEl)   rotateLineEl.setAttribute('display', 'none');
+    return;
+  }
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const p of selectedPaths) {
+    try {
+      const b = p.getBBox();
+      minX=Math.min(minX,b.x); minY=Math.min(minY,b.y);
+      maxX=Math.max(maxX,b.x+b.width); maxY=Math.max(maxY,b.y+b.height);
+    } catch(_) {}
+  }
+  if (!isFinite(minX)) return;
+  const bboxCX  = (minX + maxX) / 2 + selTX;
+  const bboxTop = minY + selTY;
+  const OFFSET  = 90;
+  const hx = bboxCX, hy = bboxTop - OFFSET;
+
+  if (!rotateHandleEl) {
+    rotateLineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    rotateLineEl.setAttribute('stroke', '#3b82f6');
+    rotateLineEl.setAttribute('stroke-width', '2');
+    rotateLineEl.setAttribute('stroke-dasharray', '5 3');
+    rotateLineEl.setAttribute('opacity', '0.5');
+    rotateLineEl.setAttribute('pointer-events', 'none');
+    selectionOverlay.appendChild(rotateLineEl);
+
+    rotateHandleEl = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    rotateHandleEl.setAttribute('r', '22');
+    rotateHandleEl.setAttribute('fill', '#3b82f6');
+    rotateHandleEl.setAttribute('stroke', 'white');
+    rotateHandleEl.setAttribute('stroke-width', '4');
+    rotateHandleEl.setAttribute('opacity', '0.85');
+    rotateHandleEl.setAttribute('pointer-events', 'none');
+    selectionOverlay.appendChild(rotateHandleEl);
+  }
+  rotateHandleEl.setAttribute('cx', hx);
+  rotateHandleEl.setAttribute('cy', hy);
+  rotateHandleEl.setAttribute('display', '');
+  rotateLineEl.setAttribute('x1', bboxCX); rotateLineEl.setAttribute('y1', bboxTop);
+  rotateLineEl.setAttribute('x2', hx);     rotateLineEl.setAttribute('y2', hy);
+  rotateLineEl.setAttribute('display', '');
 }
 
 // ── Toast ──
@@ -1661,6 +1740,28 @@ function startStroke(e) {
     selMoveStartY = src.clientY;
     selMovedEnough = false;
     const pos = getPos(e);
+
+    // Check if tap landed on the rotation handle
+    if (selectedPaths.size > 0 && rotateHandleEl && rotateHandleEl.getAttribute('display') !== 'none') {
+      const hx = parseFloat(rotateHandleEl.getAttribute('cx'));
+      const hy = parseFloat(rotateHandleEl.getAttribute('cy'));
+      if (Math.hypot(pos.x - hx, pos.y - hy) < 35) {
+        // Compute centroid (accounting for any pending translate)
+        let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+        for (const p of selectedPaths) {
+          const b = p.getBBox();
+          mnX=Math.min(mnX,b.x); mnY=Math.min(mnY,b.y);
+          mxX=Math.max(mxX,b.x+b.width); mxY=Math.max(mxY,b.y+b.height);
+        }
+        rotateCX = (mnX+mxX)/2 + selTX;
+        rotateCY = (mnY+mxY)/2 + selTY;
+        rotateStartAngle = Math.atan2(pos.y - rotateCY, pos.x - rotateCX);
+        rotateDelta = 0;
+        isRotating = true;
+        return;
+      }
+    }
+
     // Hit-test strokes in reverse order (topmost first)
     let hit = null;
     for (let i = strokes.length - 1; i >= 0; i--) {
@@ -1744,6 +1845,17 @@ function continueStroke(e) {
     return;
   }
   if (mode === 'select') {
+    if (isRotating && selectedPaths.size) {
+      const pos = getPos(e);
+      const angle = Math.atan2(pos.y - rotateCY, pos.x - rotateCX);
+      rotateDelta = (angle - rotateStartAngle) * 180 / Math.PI;
+      const t = `rotate(${rotateDelta}, ${rotateCX}, ${rotateCY})`;
+      for (const path of selectedPaths) path.setAttribute('transform', t);
+      for (const h of selHighlights.values()) h.setAttribute('transform', t);
+      if (rotateHandleEl) rotateHandleEl.setAttribute('transform', t);
+      if (rotateLineEl)   rotateLineEl.setAttribute('transform', t);
+      return;
+    }
     if (!isMovingSelected || !selectedPaths.size) return;
     const src = e.touches ? e.touches[0] : e;
     const dx_screen = src.clientX - selMoveStartX;
@@ -1812,6 +1924,29 @@ function endStroke(e) {
     return;
   }
   if (mode === 'select') {
+    if (isRotating) {
+      isRotating = false;
+      if (Math.abs(rotateDelta) > 0.5) {
+        saveToUndoStack();
+        for (const path of selectedPaths) {
+          const baked = rotatePath(path.getAttribute('d'), rotateDelta, rotateCX, rotateCY);
+          path.setAttribute('d', baked);
+          path.removeAttribute('transform');
+          const h = selHighlights.get(path);
+          if (h) { h.setAttribute('d', baked); h.removeAttribute('transform'); }
+        }
+        rotateDelta = 0;
+        scheduleAutoSave();
+      } else {
+        for (const path of selectedPaths) path.removeAttribute('transform');
+        for (const h of selHighlights.values()) h.removeAttribute('transform');
+      }
+      if (rotateHandleEl) rotateHandleEl.removeAttribute('transform');
+      if (rotateLineEl)   rotateLineEl.removeAttribute('transform');
+      updateRotateHandle();
+      updateUI();
+      return;
+    }
     isMovingSelected = false;
     if (selectedPaths.size > 0) svg.style.cursor = 'grab';
     // Only bake if the paths actually moved
@@ -1827,6 +1962,7 @@ function endStroke(e) {
         if (h) { h.setAttribute('d', baked); h.removeAttribute('transform'); }
       }
       selTX = 0; selTY = 0;
+      updateRotateHandle();
       scheduleAutoSave();
     }
     updateUI();
