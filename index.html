@@ -14,11 +14,11 @@
   <!-- Register service worker with update detection -->
   <script>
     if ('serviceWorker' in navigator) {
-      // Unregister any stale SW registrations from wrong scopes (e.g. old test URLs)
-      const EXPECTED_SCOPE = 'https://uniglyph.github.io/uniglyph/';
+      // Unregister any stale SW registrations from a different scope than the current page
+      const expectedScope = new URL('./', location.href).href;
       navigator.serviceWorker.getRegistrations().then(registrations => {
         for (const reg of registrations) {
-          if (reg.scope !== EXPECTED_SCOPE) reg.unregister();
+          if (reg.scope !== expectedScope) reg.unregister();
         }
       });
 
@@ -809,93 +809,6 @@
     }
 
     ::-webkit-scrollbar { display: none; }
-
-
-    #storage-indicator {
-      font-size: 11px;
-      color: var(--ink-muted);
-    }
-    
-    .storage-bar {
-      width: 180px;
-      height: 4px;
-      background: var(--paper-mid);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-    
-    .storage-bar-fill {
-      height: 100%;
-      background: var(--ink-muted);
-      transition: width 0.3s, background 0.3s;
-    }
-    
-    .storage-bar-fill.warning {
-      background: #f59e0b;
-    }
-    
-    .storage-bar-fill.critical {
-      background: var(--accent);
-    }
-
-    @media (max-width: 599px) {
-      .ss-header {
-        padding: 16px 20px;
-      }
-      
-      .ss-new-btn {
-        min-width: 40px;
-        width: 40px;
-        height: 40px;
-        padding: 0;
-        font-size: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      
-      .ss-new-btn .btn-text {
-        display: none; /* Hide text on mobile */
-      }
-      
-      .ss-new-btn .btn-icon {
-        display: block; /* Show icon on mobile */
-      }
-    }
-    
-    /* Desktop: hide icons, show text */
-    @media (min-width: 600px) {
-      .ss-new-btn .btn-icon {
-        display: none;
-      }
-      .ss-new-btn .btn-text {
-        display: inline;
-      }
-    }
-
-    #update-toast {
-      position: fixed;
-      top: calc(env(safe-area-inset-top, 0px) + 20px); left: 50%;
-      transform: translateX(-50%);
-      background: var(--ink);
-      color: var(--paper);
-      padding: 12px 20px;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 500;
-      z-index: 9999;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s;
-    }
-
-    #update-toast.show {
-      opacity: 1;
-      pointer-events: auto;
-    }
   </style>
 </head>
 <body>
@@ -1154,39 +1067,41 @@
       <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 198.2 53.43" style="height:36px;width:auto;display:block;">
   <defs>
     <style>
-      .st0 {
+      .logo-fill-dark {
         fill: #463b3b;
       }
 
-      .st1 {
+      .logo-fill-main {
         fill: #423636;
       }
 
-      .st2 {
+      .logo-fill-light {
         fill: #f2f1f1;
       }
     </style>
   </defs>
-  <path class="st1" d="M102.18,51.5c-3.25,2.25-6.57,2.52-9.97.85-1.52-.75-2.94-1.72-4.3-2.74-.68-.51-1.26-1.29-1.61-2.07-.62-1.36-.73-2.84.28-4.08.97-1.19,2.4-1.54,3.88-1.44,1.32.09,2.33,1.09,2.57,2.53.13.78.17,1.55,1.04,1.8,1.02.29,2.07.6,3.12.63.44.01,1.08-.59,1.3-1.07.43-.92.7-1.93.89-2.93.49-2.55.25-5.12.16-7.81-1.32,0-2.47-.03-3.61,0-2.89.1-5.06-1.44-7.06-3.24-.56-.5-1.01-1.42-1.03-2.15-.05-2.72.02-5.45.2-8.16.28-4.37,5.47-7.6,8.81-7.9.95-.09,1.91-.06,2.86.01,1.41.11,2.64.65,3.52,1.83.28.38.58.77.95,1.05.97.74,1.28,1.71,1.25,2.87-.03.89-.02,1.78,0,2.66.11,6.55.35,13.09.29,19.64-.03,3.52-.94,6.89-3.54,9.71ZM95.68,20.59c-1.32.67-1.68,1.89-1.8,3.21-.08.94-.05,1.9-.04,2.85.02,1.55.29,1.91,1.68,2.32,1.19.35,1.75.15,2.58-1.01,1.12-1.57,1.21-3.41,1.31-5.25.08-1.38-1.18-1.86-1.71-2.96-.65.25-1.2.46-2.02.83Z"/>
-  <path class="st1" d="M124.88,46.9c-.37-.21-.61-.33-.83-.5-1.59-1.22-2-2.83-1.12-4.27.92-1.5,3.03-1.99,4.71-1.04.83.47,1.57,1.09,2.41,1.54,1.99,1.07,3.26.59,3.87-1.56.69-2.42,1.3-4.86,1.83-7.32.18-.83.03-1.74.03-2.57-.17-.12-.28-.26-.38-.25-4.36.22-7.06-2.46-9.42-5.56-.61-.8-.93-1.99-.98-3.03-.13-2.66-.03-5.32-.05-7.99-.01-1.43.51-2.55,1.85-3.14,2.05-.89,4.17.52,4.28,2.91.09,1.98.14,3.97-.01,5.94-.17,2.15.85,3.31,2.95,4.1,1.17-1.62,2.49-3.13,2.48-5.36,0-1.43-.07-2.87.02-4.3.12-1.97,1.57-3.2,3.38-3.02,1.51.15,2.69,1.23,2.69,2.86,0,4.84-.12,9.68-.24,14.52-.04,1.43-.33,2.85-.34,4.27-.02,4.05-1.32,7.81-2.72,11.49-1.09,2.88-3.58,4.29-6.66,4.69-2.95.39-5.27-1.03-7.78-2.42Z"/>
-  <path class="st1" d="M149.43,39.87c-.25-5.74.06-11.25.61-16.75.18-1.84.95-3.58,2.36-4.89,3.07-2.86,6.77-3.77,10.81-3.13,1.88.3,3.05,1.79,3.9,3.38,1.48,2.77,1.56,5.81,1.01,8.79-.49,2.65-3.44,4.73-6.43,4.81-1.97.05-3.94,0-6.1,0-.2,2.33-.15,4.48-.03,6.65.11,2.03.03,4.07.04,6.11,0,.74,0,1.48.1,2.21.27,1.95-.75,3.48-2.55,3.78-1.66.27-3.43-.99-3.64-2.81-.16-1.41-.03-2.86-.03-4.29,0-1.22-.01-2.44-.05-3.87ZM157.45,22.1c-.93.52-1.18,1.41-1.33,2.33,1.66,1.78,3.65,2.11,6.24.94-.21-1.36-.43-2.78-.63-4.07-1.69-.54-2.82.15-4.27.8Z"/>
-  <path class="st1" d="M54.25,24.94c-.38-1.06-.62-2-1.07-2.83-1.36-2.48-3.19-3.29-5.96-2.7-.86.19-1.69.55-2.55.72-.89.18-1.42.7-1.84,1.46-1.1,1.98-1.97,4.04-2.31,6.3-.22,1.48-.52,2.96-.67,4.44-.07.65.11,1.33.22,1.99.41,2.42-2.37,4.9-4.7,4.17-1.2-.38-1.99-1.18-2.19-2.45-.09-.53-.14-1.1-.05-1.63.56-3.29,1.11-6.58,1.77-9.85.52-2.57,1.77-4.87,3.15-7.06,1.09-1.72,2.64-2.91,4.68-3.39,2.18-.52,4.31-1.13,6.62-1.04,3.45.13,6.19,1.43,8.17,4.25,1.88,2.67,3.12,5.54,2.92,8.94-.15,2.45,0,4.91-.04,7.37-.03,2.01-.92,3.18-2.52,3.42-1.71.25-3.06-.69-3.6-2.6-.3-1.05-.53-2.12-.7-3.2-.09-.59-.19-1.33.08-1.79.82-1.4.68-2.87.59-4.54Z"/>
-  <path class="st1" d="M184.95,20.36c-1.03,1.3-1.44,2.6-1.34,4.11.09,1.43.07,2.87,0,4.3-.08,1.85-1.22,2.99-2.92,3.05-1.81.06-3.03-1.06-3.19-3-.44-5.42-.88-10.84-1.26-16.26-.19-2.65-.26-5.31-.35-7.96-.02-.68.03-1.37.15-2.04.31-1.67,1.55-2.64,3.17-2.56,1.61.07,2.92,1.16,3.11,2.73.09.73-.02,1.5-.14,2.23-.38,2.29-.1,6.65.65,8.76.83-.22,1.66-.44,2.5-.68,4.11-1.15,10.65,1.58,11.59,6.01.38,1.79,1.02,3.53,1.24,5.33.19,1.65-.32,3.28-1.66,4.41-.94.8-2.08.98-3.26.5-1.19-.48-1.84-1.37-1.94-2.64-.05-.61-.02-1.23-.03-1.84,0-.68.1-1.39-.04-2.04-.25-1.19-.04-2.54-1.71-3.15-1.7-.62-3.14-.86-4.57.75Z"/>
-  <path class="st1" d="M4.62,16.39c2.18,1.31,2.84,2.92,2.62,5.17-.21,2.23-.25,4.5-.19,6.74.04,1.66,2.19,4.04,3.83,4.33,1.2.21,2.45.28,3.66.16,1.65-.16,2.17-1.55,2.43-2.91.54-2.73.93-5.5,1.43-8.23.2-1.07.45-2.14.85-3.14.6-1.48,2.04-2.17,3.48-1.84,1.44.33,2.36,1.55,2.35,3.18,0,.48-.06.96-.14,1.43-.59,3.21-1.19,6.42-1.78,9.64-.38,2.08-1.3,3.9-2.71,5.43-1.56,1.7-3.37,2.91-5.9,2.69-2.16-.19-4.39.28-6.45-.69-.98-.46-2.09-.88-2.78-1.65-1.41-1.56-2.69-3.26-3.79-5.05-.5-.81-.57-1.95-.64-2.95-.18-2.44-.25-4.9-.36-7.35-.02-.48-.03-.96-.01-1.43.12-2.49,1.37-3.6,4.1-3.5Z"/>
-  <path class="st1" d="M119.17,5.66c-1.12,2.08-.9,4.25-1.14,6.33-.22,1.89-.27,3.79-.37,5.69-.14,2.71-.19,5.43-.44,8.13-.1,1.05-.52,2.12-1.01,3.06-.61,1.17-1.95,1.66-3.13,1.4-1.38-.3-2.3-1.25-2.43-2.67-.07-.73.04-1.49.11-2.23.24-2.78.51-5.55.75-8.33.33-3.86.61-7.72,1-11.57.09-.84.43-1.73.9-2.45.72-1.1,1.85-1.6,3.19-1.36,1.35.25,2.16,1.1,2.46,2.42.1.46.1.94.11,1.56Z"/>
-  <path class="st1" d="M75.45,35.89c-2.49-.29-3.33-2.11-4.06-3.96-.2-.5-.13-1.3.14-1.77,1.82-3.24,1.33-6.72,1.03-10.13-.16-1.77.4-3.05,1.57-4.19.86-.84,1.95-.96,3.05-.6,1.13.37,1.79,1.21,1.96,2.39.09.6.07,1.22.05,1.83-.18,4.27-.38,8.55-.56,12.82-.1,2.28-.82,3.16-3.17,3.62Z"/>
-  <path class="st0" d="M80.6,6.98c-1.42,1.79-2.82,2.29-4.29,1.53-2.18-1.13-1.71-3.21-1.67-5.07.03-1.53.98-2.62,2.35-2.99,1.69-.47,3.47.34,4.51,2.03.89,1.46.65,2.75-.9,4.51Z"/>
-  <path class="st0" d="M41.88.77c2.96.53,3.92,2.25,2.8,4.82-.27.62-.58,1.23-.98,1.77-.95,1.3-2.39,1.65-3.78.99-1.28-.6-2.02-1.94-1.68-3.36.46-1.95,1.07-3.86,3.64-4.22Z"/>
-  <path class="st0" d="M24.77,1.59c2.05,1.87,2.12,4.37.24,6.11-.91.85-1.96,1.17-3.19.7-1.21-.47-1.86-1.36-2-2.61-.33-2.94,1.91-4.91,4.95-4.2Z"/>
-  <path class="st0" d="M54.33,1.54c1.15-.82,2.33-.71,3.47-.58,1.31.15,2.3,1.12,2.51,2.34.22,1.3-.09,2.42-1.25,3.22-1.6,1.11-3.21,1.09-4.68-.1-1.57-1.27-1.63-2.9-.05-4.88Z"/>
-  <path class="st0" d="M6.33,5.48c-.18.94-.21,1.8-.59,2.46-.65,1.15-2.12,1.54-3.4,1.13C1.04,8.66.03,7.16,0,5.57c-.03-1.47.92-2.83,2.28-3.27,1.25-.4,2.74.02,3.42,1.12.34.55.43,1.26.63,2.06Z"/>
-  <path class="st2" d="M95.81,20.51c.69-.29,1.25-.51,1.89-.75.52,1.1,1.79,1.58,1.71,2.96-.1,1.84-.19,3.67-1.31,5.25-.83,1.16-1.39,1.36-2.58,1.01-1.39-.41-1.66-.77-1.68-2.32,0-.95-.04-1.91.04-2.85.11-1.32.48-2.55,1.93-3.29Z"/>
-  <path class="st2" d="M157.59,22.02c1.31-.58,2.44-1.27,4.13-.73.2,1.29.42,2.72.63,4.07-2.59,1.17-4.58.84-6.24-.94.15-.92.4-1.81,1.47-2.41Z"/>
+  <path class="logo-fill-main" d="M102.18,51.5c-3.25,2.25-6.57,2.52-9.97.85-1.52-.75-2.94-1.72-4.3-2.74-.68-.51-1.26-1.29-1.61-2.07-.62-1.36-.73-2.84.28-4.08.97-1.19,2.4-1.54,3.88-1.44,1.32.09,2.33,1.09,2.57,2.53.13.78.17,1.55,1.04,1.8,1.02.29,2.07.6,3.12.63.44.01,1.08-.59,1.3-1.07.43-.92.7-1.93.89-2.93.49-2.55.25-5.12.16-7.81-1.32,0-2.47-.03-3.61,0-2.89.1-5.06-1.44-7.06-3.24-.56-.5-1.01-1.42-1.03-2.15-.05-2.72.02-5.45.2-8.16.28-4.37,5.47-7.6,8.81-7.9.95-.09,1.91-.06,2.86.01,1.41.11,2.64.65,3.52,1.83.28.38.58.77.95,1.05.97.74,1.28,1.71,1.25,2.87-.03.89-.02,1.78,0,2.66.11,6.55.35,13.09.29,19.64-.03,3.52-.94,6.89-3.54,9.71ZM95.68,20.59c-1.32.67-1.68,1.89-1.8,3.21-.08.94-.05,1.9-.04,2.85.02,1.55.29,1.91,1.68,2.32,1.19.35,1.75.15,2.58-1.01,1.12-1.57,1.21-3.41,1.31-5.25.08-1.38-1.18-1.86-1.71-2.96-.65.25-1.2.46-2.02.83Z"/>
+  <path class="logo-fill-main" d="M124.88,46.9c-.37-.21-.61-.33-.83-.5-1.59-1.22-2-2.83-1.12-4.27.92-1.5,3.03-1.99,4.71-1.04.83.47,1.57,1.09,2.41,1.54,1.99,1.07,3.26.59,3.87-1.56.69-2.42,1.3-4.86,1.83-7.32.18-.83.03-1.74.03-2.57-.17-.12-.28-.26-.38-.25-4.36.22-7.06-2.46-9.42-5.56-.61-.8-.93-1.99-.98-3.03-.13-2.66-.03-5.32-.05-7.99-.01-1.43.51-2.55,1.85-3.14,2.05-.89,4.17.52,4.28,2.91.09,1.98.14,3.97-.01,5.94-.17,2.15.85,3.31,2.95,4.1,1.17-1.62,2.49-3.13,2.48-5.36,0-1.43-.07-2.87.02-4.3.12-1.97,1.57-3.2,3.38-3.02,1.51.15,2.69,1.23,2.69,2.86,0,4.84-.12,9.68-.24,14.52-.04,1.43-.33,2.85-.34,4.27-.02,4.05-1.32,7.81-2.72,11.49-1.09,2.88-3.58,4.29-6.66,4.69-2.95.39-5.27-1.03-7.78-2.42Z"/>
+  <path class="logo-fill-main" d="M149.43,39.87c-.25-5.74.06-11.25.61-16.75.18-1.84.95-3.58,2.36-4.89,3.07-2.86,6.77-3.77,10.81-3.13,1.88.3,3.05,1.79,3.9,3.38,1.48,2.77,1.56,5.81,1.01,8.79-.49,2.65-3.44,4.73-6.43,4.81-1.97.05-3.94,0-6.1,0-.2,2.33-.15,4.48-.03,6.65.11,2.03.03,4.07.04,6.11,0,.74,0,1.48.1,2.21.27,1.95-.75,3.48-2.55,3.78-1.66.27-3.43-.99-3.64-2.81-.16-1.41-.03-2.86-.03-4.29,0-1.22-.01-2.44-.05-3.87ZM157.45,22.1c-.93.52-1.18,1.41-1.33,2.33,1.66,1.78,3.65,2.11,6.24.94-.21-1.36-.43-2.78-.63-4.07-1.69-.54-2.82.15-4.27.8Z"/>
+  <path class="logo-fill-main" d="M54.25,24.94c-.38-1.06-.62-2-1.07-2.83-1.36-2.48-3.19-3.29-5.96-2.7-.86.19-1.69.55-2.55.72-.89.18-1.42.7-1.84,1.46-1.1,1.98-1.97,4.04-2.31,6.3-.22,1.48-.52,2.96-.67,4.44-.07.65.11,1.33.22,1.99.41,2.42-2.37,4.9-4.7,4.17-1.2-.38-1.99-1.18-2.19-2.45-.09-.53-.14-1.1-.05-1.63.56-3.29,1.11-6.58,1.77-9.85.52-2.57,1.77-4.87,3.15-7.06,1.09-1.72,2.64-2.91,4.68-3.39,2.18-.52,4.31-1.13,6.62-1.04,3.45.13,6.19,1.43,8.17,4.25,1.88,2.67,3.12,5.54,2.92,8.94-.15,2.45,0,4.91-.04,7.37-.03,2.01-.92,3.18-2.52,3.42-1.71.25-3.06-.69-3.6-2.6-.3-1.05-.53-2.12-.7-3.2-.09-.59-.19-1.33.08-1.79.82-1.4.68-2.87.59-4.54Z"/>
+  <path class="logo-fill-main" d="M184.95,20.36c-1.03,1.3-1.44,2.6-1.34,4.11.09,1.43.07,2.87,0,4.3-.08,1.85-1.22,2.99-2.92,3.05-1.81.06-3.03-1.06-3.19-3-.44-5.42-.88-10.84-1.26-16.26-.19-2.65-.26-5.31-.35-7.96-.02-.68.03-1.37.15-2.04.31-1.67,1.55-2.64,3.17-2.56,1.61.07,2.92,1.16,3.11,2.73.09.73-.02,1.5-.14,2.23-.38,2.29-.1,6.65.65,8.76.83-.22,1.66-.44,2.5-.68,4.11-1.15,10.65,1.58,11.59,6.01.38,1.79,1.02,3.53,1.24,5.33.19,1.65-.32,3.28-1.66,4.41-.94.8-2.08.98-3.26.5-1.19-.48-1.84-1.37-1.94-2.64-.05-.61-.02-1.23-.03-1.84,0-.68.1-1.39-.04-2.04-.25-1.19-.04-2.54-1.71-3.15-1.7-.62-3.14-.86-4.57.75Z"/>
+  <path class="logo-fill-main" d="M4.62,16.39c2.18,1.31,2.84,2.92,2.62,5.17-.21,2.23-.25,4.5-.19,6.74.04,1.66,2.19,4.04,3.83,4.33,1.2.21,2.45.28,3.66.16,1.65-.16,2.17-1.55,2.43-2.91.54-2.73.93-5.5,1.43-8.23.2-1.07.45-2.14.85-3.14.6-1.48,2.04-2.17,3.48-1.84,1.44.33,2.36,1.55,2.35,3.18,0,.48-.06.96-.14,1.43-.59,3.21-1.19,6.42-1.78,9.64-.38,2.08-1.3,3.9-2.71,5.43-1.56,1.7-3.37,2.91-5.9,2.69-2.16-.19-4.39.28-6.45-.69-.98-.46-2.09-.88-2.78-1.65-1.41-1.56-2.69-3.26-3.79-5.05-.5-.81-.57-1.95-.64-2.95-.18-2.44-.25-4.9-.36-7.35-.02-.48-.03-.96-.01-1.43.12-2.49,1.37-3.6,4.1-3.5Z"/>
+  <path class="logo-fill-main" d="M119.17,5.66c-1.12,2.08-.9,4.25-1.14,6.33-.22,1.89-.27,3.79-.37,5.69-.14,2.71-.19,5.43-.44,8.13-.1,1.05-.52,2.12-1.01,3.06-.61,1.17-1.95,1.66-3.13,1.4-1.38-.3-2.3-1.25-2.43-2.67-.07-.73.04-1.49.11-2.23.24-2.78.51-5.55.75-8.33.33-3.86.61-7.72,1-11.57.09-.84.43-1.73.9-2.45.72-1.1,1.85-1.6,3.19-1.36,1.35.25,2.16,1.1,2.46,2.42.1.46.1.94.11,1.56Z"/>
+  <path class="logo-fill-main" d="M75.45,35.89c-2.49-.29-3.33-2.11-4.06-3.96-.2-.5-.13-1.3.14-1.77,1.82-3.24,1.33-6.72,1.03-10.13-.16-1.77.4-3.05,1.57-4.19.86-.84,1.95-.96,3.05-.6,1.13.37,1.79,1.21,1.96,2.39.09.6.07,1.22.05,1.83-.18,4.27-.38,8.55-.56,12.82-.1,2.28-.82,3.16-3.17,3.62Z"/>
+  <path class="logo-fill-dark" d="M80.6,6.98c-1.42,1.79-2.82,2.29-4.29,1.53-2.18-1.13-1.71-3.21-1.67-5.07.03-1.53.98-2.62,2.35-2.99,1.69-.47,3.47.34,4.51,2.03.89,1.46.65,2.75-.9,4.51Z"/>
+  <path class="logo-fill-dark" d="M41.88.77c2.96.53,3.92,2.25,2.8,4.82-.27.62-.58,1.23-.98,1.77-.95,1.3-2.39,1.65-3.78.99-1.28-.6-2.02-1.94-1.68-3.36.46-1.95,1.07-3.86,3.64-4.22Z"/>
+  <path class="logo-fill-dark" d="M24.77,1.59c2.05,1.87,2.12,4.37.24,6.11-.91.85-1.96,1.17-3.19.7-1.21-.47-1.86-1.36-2-2.61-.33-2.94,1.91-4.91,4.95-4.2Z"/>
+  <path class="logo-fill-dark" d="M54.33,1.54c1.15-.82,2.33-.71,3.47-.58,1.31.15,2.3,1.12,2.51,2.34.22,1.3-.09,2.42-1.25,3.22-1.6,1.11-3.21,1.09-4.68-.1-1.57-1.27-1.63-2.9-.05-4.88Z"/>
+  <path class="logo-fill-dark" d="M6.33,5.48c-.18.94-.21,1.8-.59,2.46-.65,1.15-2.12,1.54-3.4,1.13C1.04,8.66.03,7.16,0,5.57c-.03-1.47.92-2.83,2.28-3.27,1.25-.4,2.74.02,3.42,1.12.34.55.43,1.26.63,2.06Z"/>
+  <path class="logo-fill-light" d="M95.81,20.51c.69-.29,1.25-.51,1.89-.75.52,1.1,1.79,1.58,1.71,2.96-.1,1.84-.19,3.67-1.31,5.25-.83,1.16-1.39,1.36-2.58,1.01-1.39-.41-1.66-.77-1.68-2.32,0-.95-.04-1.91.04-2.85.11-1.32.48-2.55,1.93-3.29Z"/>
+  <path class="logo-fill-light" d="M157.59,22.02c1.31-.58,2.44-1.27,4.13-.73.2,1.29.42,2.72.63,4.07-2.59,1.17-4.58.84-6.24-.94.15-.92.4-1.81,1.47-2.41Z"/>
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v191 — version history</summary>
+        <summary>v193 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v193</span>Code hygiene: remove debug console.log/error around new-session button; fix showToast to accept duration param; fix --ink-lighter to --ink-muted; rename SVG logo classes st0/st1/st2 to logo-fill-dark/main/light</div>
+          <div class="vh-item"><span class="vh-tag">v192</span>Pre-store cleanup: relative paths in SW and manifest (Vercel-portable); remove duplicated CSS; declare undeclared globals (zoomAngle, modalTargetId, zoom-indicator throttle); fix session-name XSS; delete dead code (doRedo/redoStack, content-move helpers, abandoned rotation state)</div>
           <div class="vh-item"><span class="vh-tag">v191</span>Fix CSS vendor prefix warnings: add standard appearance and user-select alongside -webkit- prefixes</div>
           <div class="vh-item"><span class="vh-tag">v190</span>Rotate selected paths: blue handle above selection bbox; drag to rotate around centroid; bakes rotation into path coordinates on release</div>
           <div class="vh-item"><span class="vh-tag">v189</span>Lottie export: chain strokes back-to-back with no gaps; keep per-stroke draw duration for natural feel</div>
@@ -1339,7 +1254,6 @@ let eraserSize = parseInt(localStorage.getItem('uniglyph_eraserSize')) || 20; //
 currentSize = brushSize;
 // Undo/Redo stack
 let undoStack = [];
-let redoStack = [];
 const MAX_UNDO_LEVELS = 20;
 const STROKE_OPACITY = 1;
 const SAMPLE_DISTANCE = 2; // Minimum distance (px) between points for drawing optimization
@@ -1347,7 +1261,6 @@ let currentPath = null, points = [], strokes = [];
 let strokeStartTime = 0;
 // ── Content move state (legacy — kept for session migration) ──
 let contentTX = 0, contentTY = 0;
-let isMovingContent = false, moveStartClientX = 0, moveStartClientY = 0, movePrevTX = 0, movePrevTY = 0;
 // ── Multi-path selection state ──
 let selectedPaths  = new Set();  // selected SVG path elements
 let selHighlights  = new Map();  // path → blue halo element in selectionOverlay
@@ -1383,11 +1296,10 @@ const DPI = 300; // Pixels per inch for viewBox calculation
 
 // ── Zoom / pan state ──
 const zoomLayer = document.getElementById('zoom-layer');
-let zoomScale = 1, zoomX = 0, zoomY = 0;
+let zoomScale = 1, zoomX = 0, zoomY = 0, zoomAngle = 0;
+let lastZoomIndicatorUpdate = 0;
 const MIN_ZOOM = 0.25, MAX_ZOOM = 8;
-const SNAP_ANGLE_THRESHOLD = 5 * (Math.PI / 180); // 5 degrees in radians
 let pinchStartDist = 0, pinchStartScale = 1;
-let pinchStartAngle = 0, pinchStartZoomAngle = 0;
 let pinchStartMidX = 0, pinchStartMidY = 0;
 let pinchStartZoomX = 0, pinchStartZoomY = 0;
 let isPinching = false;
@@ -1455,24 +1367,6 @@ function resetZoom() {
   document.getElementById('zoom-reset').classList.remove('show');
 }
 document.getElementById('zoom-reset').addEventListener('click', resetZoom);
-
-// ── Content Move ──
-function applyContentTransform() {
-  strokeLayer.setAttribute('transform', `translate(${contentTX} ${contentTY})`);
-}
-
-function clampContentOffset(tx, ty) {
-  if (!strokes.length) return { x: tx, y: ty };
-  const vbW = svg.viewBox.baseVal.width;
-  const vbH = svg.viewBox.baseVal.height;
-  // getBBox returns bbox in strokeLayer's local space (unaffected by its own transform)
-  const bbox = strokeLayer.getBBox();
-  const margin = 50; // viewBox units that must remain visible on canvas
-  return {
-    x: Math.max(margin - bbox.x - bbox.width, Math.min(vbW - margin - bbox.x, tx)),
-    y: Math.max(margin - bbox.y - bbox.height, Math.min(vbH - margin - bbox.y, ty))
-  };
-}
 
 // ── Single-path selection helpers ──
 
@@ -1651,11 +1545,11 @@ function updateRotateHandle() {
 }
 
 // ── Toast ──
-function showToast(msg) {
+function showToast(msg, duration = 2200) {
   toast.textContent = msg;
   toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
 }
 
 // ── Drawing ──
@@ -2213,9 +2107,9 @@ canvasArea.addEventListener('touchmove', e => {
     // Skip clampPan during active pinch - only clamp on touchend
     applyZoom();
     // Throttle zoom indicator updates
-    if (!this._lastIndicatorUpdate || Date.now() - this._lastIndicatorUpdate > 100) {
+    if (Date.now() - lastZoomIndicatorUpdate > 100) {
       showZoomIndicator();
-      this._lastIndicatorUpdate = Date.now();
+      lastZoomIndicatorUpdate = Date.now();
     }
   } else if (e.touches.length === 1 && !isPinching) {
     continueStroke(e);
@@ -2447,22 +2341,18 @@ window.addEventListener('resize', () => {
 function saveToUndoStack() {
   const currentState = serializeCanvas();
   undoStack.push(currentState);
-  
+
   // Limit stack size
   if (undoStack.length > MAX_UNDO_LEVELS) {
     undoStack.shift(); // Remove oldest
   }
-  
-  // Clear redo stack when new action is taken
-  redoStack = [];
   updateUI();
 }
 
-// Clear undo/redo stacks (when switching sessions or starting fresh)
+// Clear undo stack (when switching sessions or starting fresh)
 function clearUndoStack() {
   clearSelection();
   undoStack = [];
-  redoStack = [];
   updateUI();
 }
 
@@ -2470,17 +2360,6 @@ function doUndo() {
   if (undoStack.length === 0) return;
   clearSelection();
   const entry = undoStack.pop();
-  redoStack.push(serializeCanvas());
-  deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
-  contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
-  updateUI();
-}
-
-function doRedo() {
-  if (redoStack.length === 0) return;
-  clearSelection();
-  const entry = redoStack.pop();
-  undoStack.push(serializeCanvas());
   deserializeCanvas(Array.isArray(entry) ? entry : entry.data);
   contentTX = 0; contentTY = 0; strokeLayer.removeAttribute('transform');
   updateUI();
@@ -2863,10 +2742,6 @@ async function getSessions() {
   const all = await idbGetAll();
   return all.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
-async function saveSession(sess) {
-  await dbReady;
-  await idbPut(sess);
-}
 async function removeSession(id) {
   await dbReady;
   await idbDelete(id);
@@ -2986,12 +2861,13 @@ async function renderSessionScreen() {
       const sessKB = (sessBytes / 1024).toFixed(1);
       
       cardBody.innerHTML = `
-        <div class="ss-card-name" data-id="${sess.id}">${sess.name}</div>
+        <div class="ss-card-name" data-id="${sess.id}"></div>
         <div class="ss-card-meta">${date}<br>${n} stroke${n!==1?'s':''}, ${sessKB} KB</div>
         <div class="ss-card-actions">
           <button class="ss-card-btn open-btn" data-id="${sess.id}">Open</button>
           <button class="ss-card-btn del" data-id="${sess.id}">Delete</button>
         </div>`;
+      cardBody.querySelector('.ss-card-name').textContent = sess.name;
       
       card.appendChild(thumbDiv);
       card.appendChild(cardBody);
@@ -3161,7 +3037,7 @@ async function updateStorageIndicator() {
     indicator.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px;">
         <span>${usedMB} MB / ${quotaGB} GB</span>
-        <span style="color: var(--ink-lighter);">${percentage}%</span>
+        <span style="color: var(--ink-muted);">${percentage}%</span>
       </div>
       <div class="storage-bar">
         <div class="storage-bar-fill ${barClass}" style="width: ${percentage}%"></div>
@@ -3190,7 +3066,8 @@ function hideSessionScreen() {
 }
 
 // Name modal
-let modalMode = 'save'; // 'save' | 'new'
+let modalMode = 'save'; // 'save' | 'new' | 'rename'
+let modalTargetId = null;
 function openNameModal(mode, defaultVal) {
   modalMode = mode;
   const titles = {
@@ -3441,16 +3318,9 @@ document.getElementById('import-file-input').addEventListener('change', async (e
 
 document.getElementById('ss-import-btn').addEventListener('click', importSessions);
 
-const newBtn = document.getElementById('ss-new-btn');
-console.log('New session button found:', newBtn);
-if (newBtn) {
-  newBtn.addEventListener('click', () => {
-    console.log('New session button clicked');
-    openNameModal('new', '');
-  });
-} else {
-  console.error('ss-new-btn element not found!');
-}
+document.getElementById('ss-new-btn').addEventListener('click', () => {
+  openNameModal('new', '');
+});
 
 // Home buttons — always go back to session screen
 async function goHome() {

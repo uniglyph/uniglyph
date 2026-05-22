@@ -1,11 +1,11 @@
-const CACHE = 'uniglyph-v191';
+const CACHE = 'uniglyph-v193';
 const ASSETS = [
-  '/uniglyph/',
-  '/uniglyph/index.html',
-  '/uniglyph/manifest.json',
-  '/uniglyph/icon.png',
-  '/uniglyph/icon-192.png',
-  '/uniglyph/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // Install: cache all assets, but don't skipWaiting yet —
@@ -43,7 +43,7 @@ self.addEventListener('fetch', e => {
         const clone = response.clone();
         caches.open(CACHE).then(cache => cache.put(e.request, clone));
         return response;
-      }).catch(() => caches.match('/uniglyph/index.html'));
+      }).catch(() => caches.match('./index.html'));
     })
   );
 });
