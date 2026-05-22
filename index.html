@@ -1098,8 +1098,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v193 — version history</summary>
+        <summary>v194 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v194</span>Import overhaul: accept raw .svg files in addition to .zip; detect canvas size from imported file's width/height/viewBox; match against presets or fall back to custom; store canvasConfig on imported session; remove broken screen-pixel scaling (paths were rendering invisibly tiny)</div>
           <div class="vh-item"><span class="vh-tag">v193</span>Code hygiene: remove debug console.log/error around new-session button; fix showToast to accept duration param; fix --ink-lighter to --ink-muted; rename SVG logo classes st0/st1/st2 to logo-fill-dark/main/light</div>
           <div class="vh-item"><span class="vh-tag">v192</span>Pre-store cleanup: relative paths in SW and manifest (Vercel-portable); remove duplicated CSS; declare undeclared globals (zoomAngle, modalTargetId, zoom-indicator throttle); fix session-name XSS; delete dead code (doRedo/redoStack, content-move helpers, abandoned rotation state)</div>
           <div class="vh-item"><span class="vh-tag">v191</span>Fix CSS vendor prefix warnings: add standard appearance and user-select alongside -webkit- prefixes</div>
@@ -1168,7 +1169,7 @@
         <span class="btn-text">New Session</span>
       </button>
     </div>
-    <input type="file" id="import-file-input" accept=".zip" style="display: none;">
+    <input type="file" id="import-file-input" accept=".zip,.svg" style="display: none;">
   </div>
   <div class="ss-divider"></div>
   <div id="ss-body"></div>
@@ -3207,112 +3208,120 @@ async function importSessions() {
   input.click();
 }
 
+// Detect the source canvas size from an imported SVG.
+// Prefers width/height in inches (Uniglyph export format), falls back to viewBox.
+// Returns a matching CANVAS_SIZES preset, or a custom config, or null if undetectable.
+function detectCanvasConfig(svgEl) {
+  const parseInches = (s) => {
+    if (!s) return null;
+    const m = s.match(/^\s*([\d.]+)\s*in\s*$/i);
+    return m ? parseFloat(m[1]) : null;
+  };
+  let w = parseInches(svgEl.getAttribute('width'));
+  let h = parseInches(svgEl.getAttribute('height'));
+
+  // Fall back to viewBox / DPI for non-Uniglyph SVGs
+  if (w === null || h === null) {
+    const vb = svgEl.getAttribute('viewBox');
+    if (vb) {
+      const parts = vb.split(/\s+/).map(parseFloat);
+      if (parts.length >= 4) {
+        w = w ?? parts[2] / DPI;
+        h = h ?? parts[3] / DPI;
+      }
+    }
+  }
+  if (!w || !h) return null;
+
+  // Match against presets within a small tolerance
+  const tol = 0.05;
+  for (const preset of Object.values(CANVAS_SIZES)) {
+    if (Math.abs(preset.w - w) < tol && Math.abs(preset.h - h) < tol) return preset;
+  }
+  return { id: 'custom', label: 'Custom', w, h };
+}
+
+// Extract strokes from an SVG document — 1:1, no scaling (caller guarantees viewBox match)
+function extractStrokesFromSvg(svgEl) {
+  const out = [];
+  svgEl.querySelectorAll('path[d]').forEach(path => {
+    const d = path.getAttribute('d');
+    if (!d) return;
+    out.push({
+      d,
+      stroke: path.getAttribute('stroke') || '#1c1917',
+      width: path.getAttribute('stroke-width') || '8',
+      opacity: path.getAttribute('opacity') || '1'
+    });
+  });
+  return out;
+}
+
 document.getElementById('import-file-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  
-  // scalePath function (reused from export)
-  function scalePath(pathD, scaleX, scaleY) {
-    if (scaleX === 1 && scaleY === 1) return pathD;
-    
-    const commands = pathD.match(/[MLQCZ][^MLQCZ]*/gi) || [];
-    return commands.map(cmd => {
-      const type = cmd[0];
-      const coords = cmd.slice(1).trim().split(/[,\s]+/).map(parseFloat);
-      
-      if (type === 'Z' || type === 'z') return type;
-      
-      const scaled = coords.map((val, i) => {
-        const scale = (i % 2 === 0) ? scaleX : scaleY;
-        return (val * scale).toFixed(3);
-      });
-      
-      return type + ' ' + scaled.join(' ');
-    }).join(' ');
-  }
-  
+
   try {
-    const zip = await JSZip.loadAsync(file);
-    
-    // Get base name from zip filename
-    const baseName = file.name.replace(/\.zip$/i, '');
-    
-    // Determine current canvas dimensions
-    const rect = svg.getBoundingClientRect();
-    const screenW = Math.round(rect.width);
-    const screenH = Math.round(rect.height);
-    
-    let currentW, currentH;
-    if (canvasConfig) {
-      // Use current canvas frame dimensions
-      const frame = canvasFrame.getBoundingClientRect();
-      currentW = Math.round(frame.width);
-      currentH = Math.round(frame.height);
-    } else {
-      // Fallback to screen dimensions
-      currentW = screenW;
-      currentH = screenH;
-    }
-    
-    const allStrokes = [];
-    
-    // Process each SVG file
-    for (const [filename, zipEntry] of Object.entries(zip.files)) {
-      if (!filename.endsWith('.svg') || zipEntry.dir) continue;
-      
-      const svgText = await zipEntry.async('text');
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-      
-      // Get canonical viewBox
-      const svgEl = svgDoc.querySelector('svg');
-      const viewBoxAttr = svgEl ? svgEl.getAttribute('viewBox') : null;
-      
-      let scaleX = 1, scaleY = 1;
-      if (viewBoxAttr) {
-        const parts = viewBoxAttr.split(/\s+/).map(parseFloat);
-        const canonicalW = parts[2];
-        const canonicalH = parts[3];
-        scaleX = currentW / canonicalW;
-        scaleY = currentH / canonicalH;
+    const isZip = /\.zip$/i.test(file.name);
+    const baseName = file.name.replace(/\.(zip|svg)$/i, '');
+
+    // Collect raw SVG text(s) from the file
+    const svgTexts = [];
+    if (isZip) {
+      const zip = await JSZip.loadAsync(file);
+      for (const [filename, zipEntry] of Object.entries(zip.files)) {
+        if (!filename.toLowerCase().endsWith('.svg') || zipEntry.dir) continue;
+        svgTexts.push(await zipEntry.async('text'));
       }
-      
-      // Extract and scale paths
-      const paths = svgDoc.querySelectorAll('path[d]');
-      paths.forEach(path => {
-        const d = path.getAttribute('d');
-        const stroke = path.getAttribute('stroke') || '#1c1917';
-        const width = path.getAttribute('stroke-width') || '8';
-        const opacity = path.getAttribute('opacity') || '1';
-        
-        if (d) {
-          const scaledD = scalePath(d, scaleX, scaleY);
-          const scaledWidth = (parseFloat(width) * scaleX).toFixed(3);
-          
-          allStrokes.push({ d: scaledD, stroke, width: scaledWidth, opacity });
-        }
-      });
-    }
-    
-    if (allStrokes.length > 0) {
-      const id = 'sess_' + Date.now();
-      await idbPut({
-        id,
-        name: baseName,
-        strokes: allStrokes,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-      await renderSessionScreen();
-      showToast(`Imported "${baseName}" with ${allStrokes.length} stroke${allStrokes.length > 1 ? 's' : ''}`);
     } else {
-      showToast('No valid SVG files found in zip');
+      svgTexts.push(await file.text());
     }
+
+    if (svgTexts.length === 0) {
+      showToast('No SVG files found in import');
+      e.target.value = '';
+      return;
+    }
+
+    // Parse all SVGs
+    const parser = new DOMParser();
+    const svgEls = svgTexts
+      .map(t => parser.parseFromString(t, 'image/svg+xml').querySelector('svg'))
+      .filter(el => el);
+
+    // Detect canvas size from the first SVG
+    const detectedConfig = detectCanvasConfig(svgEls[0]);
+    if (!detectedConfig) {
+      showToast('Could not determine canvas size from file');
+      e.target.value = '';
+      return;
+    }
+
+    // Extract strokes from every SVG (no scaling — source and target viewBoxes match)
+    const allStrokes = svgEls.flatMap(extractStrokesFromSvg);
+
+    if (allStrokes.length === 0) {
+      showToast('No strokes found in import');
+      e.target.value = '';
+      return;
+    }
+
+    const id = 'sess_' + Date.now();
+    await idbPut({
+      id,
+      name: baseName,
+      strokes: allStrokes,
+      canvasConfig: detectedConfig,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    await renderSessionScreen();
+    showToast(`Imported "${baseName}" — ${allStrokes.length} stroke${allStrokes.length !== 1 ? 's' : ''} (${detectedConfig.label})`);
   } catch (err) {
     console.error('Import error:', err);
-    showToast('Import failed - invalid zip file');
+    showToast('Import failed — invalid file');
   }
-  
+
   e.target.value = '';
 });
 
