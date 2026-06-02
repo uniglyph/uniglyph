@@ -1098,8 +1098,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v194 — version history</summary>
+        <summary>v195 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v195</span>Lottie export tweaks: drop "-lottie" from filename (now just sessionName.json); add 3x PLAYBACK_SPEED multiplier so animations play three times faster than the original draw time while keeping per-stroke proportions</div>
           <div class="vh-item"><span class="vh-tag">v194</span>Import overhaul: accept raw .svg files in addition to .zip; detect canvas size from imported file's width/height/viewBox; match against presets or fall back to custom; store canvasConfig on imported session; remove broken screen-pixel scaling (paths were rendering invisibly tiny)</div>
           <div class="vh-item"><span class="vh-tag">v193</span>Code hygiene: remove debug console.log/error around new-session button; fix showToast to accept duration param; fix --ink-lighter to --ink-muted; rename SVG logo classes st0/st1/st2 to logo-fill-dark/main/light</div>
           <div class="vh-item"><span class="vh-tag">v192</span>Pre-store cleanup: relative paths in SW and manifest (Vercel-portable); remove duplicated CSS; declare undeclared globals (zoomAngle, modalTargetId, zoom-indicator throttle); fix session-name XSS; delete dead code (doRedo/redoStack, content-move helpers, abandoned rotation state)</div>
@@ -2424,13 +2425,14 @@ async function doExportLottie() {
   const strokeData = serializeCanvas();
 
   // Build chained timing — each stroke starts when the previous ends, no gaps
-  // Keep each stroke's real draw duration for natural feel
+  // Keep each stroke's real draw duration for natural feel, but compress by PLAYBACK_SPEED
   const DEFAULT_STROKE_MS = 300;
+  const PLAYBACK_SPEED = 3; // 3 = animation plays 3x faster than how it was drawn
   const strokeDurations = strokeData.map(sd => {
-    if (sd.t0 !== undefined && sd.t1 !== undefined) {
-      return Math.max(sd.t1 - sd.t0, 50);
-    }
-    return DEFAULT_STROKE_MS;
+    const real = (sd.t0 !== undefined && sd.t1 !== undefined)
+      ? Math.max(sd.t1 - sd.t0, 50)
+      : DEFAULT_STROKE_MS;
+    return real / PLAYBACK_SPEED;
   });
   const holdFrames = Math.round(FR * 0.8);
   const totalFrames = Math.round(strokeDurations.reduce((a, b) => a + b, 0) * FR / 1000) + holdFrames;
@@ -2500,7 +2502,7 @@ async function doExportLottie() {
   const blob = new Blob([JSON.stringify(lottie)], { type:'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `${sessionName}-lottie.json`;
+  a.href = url; a.download = `${sessionName}.json`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
   showToast(`Lottie exported — ${strokeData.length} stroke${strokeData.length!==1?'s':''}`);
