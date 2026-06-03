@@ -1098,8 +1098,10 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v195 — version history</summary>
+        <summary>v198 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v198</span>Lottie export round-trip fixes for Lottielab/AEUX: add identity ks layer transforms and tr shape-group transforms; modernize trim-path keyframes (only `s` per keyframe, scalar i.x/i.y) so strict importers can convert the JSON to AE-editable layers; no visual change in Lottie players</div>
+          <div class="vh-item"><span class="vh-tag">v197</span>Lottie export length pinned to 10 seconds total (trailing 0.8s hold included): every export is exactly 600 frames at 60fps; strokes are scaled proportionally to fit the ~9.2s draw budget while preserving relative timing; removes PLAYBACK_SPEED multiplier</div>
           <div class="vh-item"><span class="vh-tag">v195</span>Lottie export tweaks: drop "-lottie" from filename (now just sessionName.json); add 3x PLAYBACK_SPEED multiplier so animations play three times faster than the original draw time while keeping per-stroke proportions</div>
           <div class="vh-item"><span class="vh-tag">v194</span>Import overhaul: accept raw .svg files in addition to .zip; detect canvas size from imported file's width/height/viewBox; match against presets or fall back to custom; store canvasConfig on imported session; remove broken screen-pixel scaling (paths were rendering invisibly tiny)</div>
           <div class="vh-item"><span class="vh-tag">v193</span>Code hygiene: remove debug console.log/error around new-session button; fix showToast to accept duration param; fix --ink-lighter to --ink-muted; rename SVG logo classes st0/st1/st2 to logo-fill-dark/main/light</div>
@@ -2424,18 +2426,43 @@ async function doExportLottie() {
   const vbH = Math.round(canvasConfig.h * DPI);
   const strokeData = serializeCanvas();
 
-  // Build chained timing — each stroke starts when the previous ends, no gaps
-  // Keep each stroke's real draw duration for natural feel, but compress by PLAYBACK_SPEED
+  // Pin total length to TARGET_SECONDS (trailing hold included). Strokes keep their
+  // relative timings but get scaled proportionally to fit the draw budget.
   const DEFAULT_STROKE_MS = 300;
-  const PLAYBACK_SPEED = 3; // 3 = animation plays 3x faster than how it was drawn
-  const strokeDurations = strokeData.map(sd => {
-    const real = (sd.t0 !== undefined && sd.t1 !== undefined)
-      ? Math.max(sd.t1 - sd.t0, 50)
-      : DEFAULT_STROKE_MS;
-    return real / PLAYBACK_SPEED;
+  const TARGET_SECONDS = 10;
+  const totalFrames = TARGET_SECONDS * FR;        // e.g. 600 at 60fps
+  const holdFrames = Math.round(FR * 0.8);        // ~0.8s trailing pause
+  const drawFrames = totalFrames - holdFrames;    // frames available for drawing
+  const targetMs = drawFrames * 1000 / FR;        // ms budget for drawing
+
+  // Real per-stroke durations (from timestamps if available, else default)
+  const realDurations = strokeData.map(sd => {
+    if (sd.t0 !== undefined && sd.t1 !== undefined) {
+      return Math.max(sd.t1 - sd.t0, 50);
+    }
+    return DEFAULT_STROKE_MS;
   });
-  const holdFrames = Math.round(FR * 0.8);
-  const totalFrames = Math.round(strokeDurations.reduce((a, b) => a + b, 0) * FR / 1000) + holdFrames;
+  const totalRealMs = realDurations.reduce((a, b) => a + b, 0);
+
+  // Scale every stroke proportionally so they sum to the draw budget
+  const scaleFactor = targetMs / totalRealMs;
+  const strokeDurations = realDurations.map(ms => ms * scaleFactor);
+
+  // Identity transforms — required by strict importers (Lottielab, AEUX, AE round-trip).
+  // Lottie players default these to identity when absent, so adding them is visually a no-op.
+  const identityLayerKs = () => ({
+    a: { a:0, k:[0,0,0] },          // anchor
+    p: { a:0, k:[0,0,0] },          // position
+    s: { a:0, k:[100,100,100] },    // scale (100%)
+    r: { a:0, k:0 },                // rotation
+    o: { a:0, k:100 }               // opacity
+  });
+  const identityGroupTr = () => ({
+    ty:'tr',
+    p: { a:0, k:[0,0] }, a: { a:0, k:[0,0] },
+    s: { a:0, k:[100,100] }, r: { a:0, k:0 }, o: { a:0, k:100 },
+    sk:{ a:0, k:0 }, sa:{ a:0, k:0 }
+  });
 
   const layers = [];
   let cursor = 0; // running frame counter
@@ -2455,6 +2482,7 @@ async function doExportLottie() {
 
     layers.push({
       ddd:0, ind:idx+2, ty:4, nm:`Stroke ${idx+1}`,
+      ks: identityLayerKs(),
       ip:sf, op:totalFrames, st:0, bm:0,
       shapes:[{
         ty:'gr', nm:'Group',
@@ -2466,11 +2494,14 @@ async function doExportLottie() {
             w:{ a:0, k:parseFloat(sd.width) } },
           { ty:'tm', nm:'Trim',
             s:{ a:0, k:0 },
+            // Modern keyframe format: only `s` per keyframe; next keyframe's `s`
+            // implies previous's end. Scalar i.x/i.y instead of single-element arrays.
             e:{ a:1, k:[
-              { t:sf, s:[0],   e:[100], i:{x:[0.4],y:[1]}, o:{x:[0.6],y:[0]} },
-              { t:ef, s:[100], e:[100], i:{x:[0.4],y:[1]}, o:{x:[0.6],y:[0]} }
+              { t:sf, s:[0], i:{x:0.4,y:1}, o:{x:0.6,y:0} },
+              { t:ef, s:[100] }
             ]},
-            o:{ a:0, k:0 }, m:1 }
+            o:{ a:0, k:0 }, m:1 },
+          identityGroupTr()
         ]
       }]
     });
@@ -2479,6 +2510,7 @@ async function doExportLottie() {
   // Background solid layer (bottom)
   layers.push({
     ddd:0, ind:strokeData.length+2, ty:1, nm:'Background',
+    ks: identityLayerKs(),
     sc: canvasColor, sh:vbH, sw:vbW,
     ip:0, op:totalFrames, st:0, bm:0
   });
