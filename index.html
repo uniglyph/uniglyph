@@ -1098,8 +1098,9 @@
 </svg>
       <div id="storage-indicator" style="margin-top: 8px;"></div>
       <details id="version-history">
-        <summary>v198 — version history</summary>
+        <summary>v199 — version history</summary>
         <div class="vh-list">
+          <div class="vh-item"><span class="vh-tag">v199</span>Fix Lottie export truncation: lower per-stroke minimum from 6 frames to 1 frame so sketches with more than ~92 strokes finish drawing within the 10-second budget (the 6-frame minimum was a leftover from v195's variable-length export and didn't fit v197's fixed 10-second design)</div>
           <div class="vh-item"><span class="vh-tag">v198</span>Lottie export round-trip fixes for Lottielab/AEUX: add identity ks layer transforms and tr shape-group transforms; modernize trim-path keyframes (only `s` per keyframe, scalar i.x/i.y) so strict importers can convert the JSON to AE-editable layers; no visual change in Lottie players</div>
           <div class="vh-item"><span class="vh-tag">v197</span>Lottie export length pinned to 10 seconds total (trailing 0.8s hold included): every export is exactly 600 frames at 60fps; strokes are scaled proportionally to fit the ~9.2s draw budget while preserving relative timing; removes PLAYBACK_SPEED multiplier</div>
           <div class="vh-item"><span class="vh-tag">v195</span>Lottie export tweaks: drop "-lottie" from filename (now just sessionName.json); add 3x PLAYBACK_SPEED multiplier so animations play three times faster than the original draw time while keeping per-stroke proportions</div>
@@ -2470,7 +2471,7 @@ async function doExportLottie() {
   strokeData.forEach((sd, idx) => {
     const durMs = strokeDurations[idx];
     const sf = cursor;
-    const ef = Math.max(sf + 6, sf + Math.round(durMs * FR / 1000));
+    const ef = Math.max(sf + 1, sf + Math.round(durMs * FR / 1000));
     cursor = ef;
 
     const hex = sd.stroke.replace('#','');
